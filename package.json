@@ -1,0 +1,18 @@
+{
+  "name": "monekei-price-alert",
+  "version": "1.0.0",
+  "description": "sFLR/FLR価格差アラートアプリ - DexScreenerとSceptre.fiのレート差を監視してGmailで通知",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["flare", "sflr", "wflr", "price-alert", "dexscreener", "sceptre"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "nodemailer": "^6.9.7"
+  }
+}
