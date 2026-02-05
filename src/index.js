@@ -43,8 +43,14 @@ const CONFIG = {
   GMAIL_APP_PASSWORD: process.env.GMAIL_APP_PASSWORD || '',
   NOTIFY_EMAIL: process.env.NOTIFY_EMAIL || '',
 
-  // アラートしきい値 (FLR)
+  // アラートしきい値 (FLR) - 差額の絶対値がこれ以上で通知
   PRICE_DIFF_THRESHOLD: parseFloat(process.env.PRICE_DIFF_THRESHOLD || '0.15'),
+
+  // DEX有利アラート - DEX価格が (Sceptre - この値) 以上で通知
+  DEX_ADVANTAGE_MARGIN: parseFloat(process.env.DEX_ADVANTAGE_MARGIN || '0.0005'),
+
+  // DEX有利アラートを有効にするか
+  DEX_ADVANTAGE_ALERT: process.env.DEX_ADVANTAGE_ALERT === 'true',
 
   // 監視間隔 (ミリ秒)
   CHECK_INTERVAL: parseInt(process.env.CHECK_INTERVAL || '60000', 10),
@@ -113,8 +119,9 @@ async function getSceptreExchangeRate() {
 
 /**
  * Gmail経由でメール送信
+ * @param {string} alertType - 'threshold' または 'dex_advantage'
  */
-async function sendEmailAlert(dexPrice, sceptreRate, priceDiff) {
+async function sendEmailAlert(dexPrice, sceptreRate, priceDiff, alertType = 'threshold') {
   if (!CONFIG.GMAIL_USER || !CONFIG.GMAIL_APP_PASSWORD || !CONFIG.NOTIFY_EMAIL) {
     console.warn('[Gmail] メール設定が不完全です。.envファイルを確認してください。');
     return false;
@@ -131,13 +138,23 @@ async function sendEmailAlert(dexPrice, sceptreRate, priceDiff) {
   const diffDirection = priceDiff > 0 ? 'DEXの方が高い' : 'Sceptreの方が高い';
   const absDiff = Math.abs(priceDiff).toFixed(4);
 
+  // アラートタイプに応じたメッセージ
+  let subject, alertMessage;
+  if (alertType === 'dex_advantage') {
+    subject = `🚀 DEXが有利！sFLR価格アラート`;
+    alertMessage = `DEX価格がSceptre公式レートに近づきました（または超えました）。DEXでの売却が有利な可能性があります。`;
+  } else {
+    subject = `⚠️ sFLR 価格差アラート: ${absDiff} FLR の差`;
+    alertMessage = `設定したしきい値 (${CONFIG.PRICE_DIFF_THRESHOLD} FLR) を超える価格差を検出しました。`;
+  }
+
   const mailOptions = {
     from: CONFIG.GMAIL_USER,
     to: CONFIG.NOTIFY_EMAIL,
-    subject: `⚠️ sFLR 価格差アラート: ${absDiff} FLR の差`,
+    subject: subject,
     html: `
-      <h2>sFLR 価格差アラート</h2>
-      <p>設定したしきい値 (${CONFIG.PRICE_DIFF_THRESHOLD} FLR) を超える価格差を検出しました。</p>
+      <h2>sFLR 価格アラート</h2>
+      <p>${alertMessage}</p>
 
       <table border="1" cellpadding="10" style="border-collapse: collapse;">
         <tr>
@@ -199,13 +216,26 @@ async function checkPriceAndAlert() {
     console.log(`  Sceptre公式:   ${sceptreRate.toFixed(4)} FLR`);
     console.log(`  差額:          ${priceDiff.toFixed(4)} FLR`);
     console.log(`  しきい値:      ±${CONFIG.PRICE_DIFF_THRESHOLD} FLR`);
+    if (CONFIG.DEX_ADVANTAGE_ALERT) {
+      console.log(`  DEX有利判定:   DEX >= Sceptre - ${CONFIG.DEX_ADVANTAGE_MARGIN}`);
+    }
 
-    // しきい値を超えたらアラート
-    if (Math.abs(priceDiff) >= CONFIG.PRICE_DIFF_THRESHOLD) {
+    // 条件1: 差額の絶対値がしきい値以上
+    const thresholdAlert = Math.abs(priceDiff) >= CONFIG.PRICE_DIFF_THRESHOLD;
+
+    // 条件2: DEXが有利（DEX価格 >= Sceptre価格 - マージン）
+    const dexAdvantageAlert = CONFIG.DEX_ADVANTAGE_ALERT &&
+      (dexPrice >= sceptreRate - CONFIG.DEX_ADVANTAGE_MARGIN);
+
+    // どちらかの条件を満たしたらアラート
+    if (thresholdAlert) {
       console.log('\n⚠️  しきい値を超えました！アラートを送信します...');
-      await sendEmailAlert(dexPrice, sceptreRate, priceDiff);
+      await sendEmailAlert(dexPrice, sceptreRate, priceDiff, 'threshold');
+    } else if (dexAdvantageAlert) {
+      console.log('\n⚠️  DEXが有利です！アラートを送信します...');
+      await sendEmailAlert(dexPrice, sceptreRate, priceDiff, 'dex_advantage');
     } else {
-      console.log('\n✓ 価格差はしきい値以内です');
+      console.log('\n✓ アラート条件を満たしていません');
     }
 
     return { dexPrice, sceptreRate, priceDiff };
