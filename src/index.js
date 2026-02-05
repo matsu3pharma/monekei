@@ -29,8 +29,8 @@ loadEnv();
 
 // 設定
 const CONFIG = {
-  // DexScreener API (sFLR/WFLR ペアアドレス - BlazeSwap)
-  DEXSCREENER_PAIR_ADDRESS: '0x3f50f880041521738fa88c46cdf7e0d8eeb11aa2',
+  // DexScreener API (sFLR/WFLR ペアアドレス - Enosys)
+  DEXSCREENER_PAIR_ADDRESS: '0xc9baba3f36ccaa54675deecc327ec7eaa48cb97d',
 
   // sFLR コントラクトアドレス
   SFLR_CONTRACT_ADDRESS: '0x12e605bc104e93b45e1ad99f9e555f659051c2bb',
