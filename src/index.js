@@ -76,11 +76,28 @@ async function getDexPrice() {
     const data = await response.json();
 
     if (data.pair) {
-      // priceNative = base token の価格（native token 単位）
-      // sFLR/WFLR ペアなので、1 sFLR = X WFLR
       const priceNative = parseFloat(data.pair.priceNative);
-      console.log(`[DexScreener] sFLR/WFLR 価格: ${priceNative} WFLR`);
-      return priceNative;
+      const baseToken = data.pair.baseToken?.symbol?.toUpperCase() || '';
+      const quoteToken = data.pair.quoteToken?.symbol?.toUpperCase() || '';
+
+      console.log(`[DexScreener] ペア: ${baseToken}/${quoteToken}`);
+      console.log(`[DexScreener] priceNative: ${priceNative}`);
+
+      // baseTokenがsFLRの場合 → priceNativeはそのまま（1 sFLR = X WFLR）
+      // baseTokenがWFLRの場合 → priceNativeは逆（1 WFLR = X sFLR）なので逆数を取る
+      let sflrPrice;
+      if (baseToken === 'SFLR' || baseToken === 'STAKED FLR') {
+        sflrPrice = priceNative;
+      } else if (quoteToken === 'SFLR' || quoteToken === 'STAKED FLR') {
+        sflrPrice = 1 / priceNative;
+      } else {
+        // どちらでもない場合はpriceNativeをそのまま使う（フォールバック）
+        console.warn(`[DexScreener] 警告: sFLRが見つかりません (base=${baseToken}, quote=${quoteToken})`);
+        sflrPrice = priceNative;
+      }
+
+      console.log(`[DexScreener] 計算後: 1 sFLR = ${sflrPrice.toFixed(4)} WFLR`);
+      return sflrPrice;
     }
 
     throw new Error('DexScreener APIからペア情報を取得できませんでした');
