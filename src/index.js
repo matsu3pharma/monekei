@@ -147,7 +147,7 @@ async function sendEmailAlert(options) {
   if (alertType === 'dex_cheap') {
     // DEXの方が安い（公式 - DEX >= しきい値）
     subject = `💰 DEXの方が安い！${tokenName}`;
-    alertMessage = `DEXでの${tokenName}価格が公式レートより安くなっています。`;
+    alertMessage = `DEXでの${tokenName}価格が公式レートより安くなっています。<br><strong>FLRをスワップして${tokenName}にしろ！</strong>`;
   } else if (alertType === 'dex_premium_sflr') {
     // sFLR: DEXの方が高い（売り時）
     subject = `🚀 売り時！${tokenName}`;
