@@ -41,7 +41,9 @@ const CONFIG = {
   STFLR_CONTRACT_ADDRESS: '0x0988C6ba244A90C07a917ebE609eB3264bE716fF',
   STFLR_ENABLED: process.env.STFLR_ENABLED === 'true',
   // stFLR: DEXが安いと判定するしきい値（公式 - DEX >= この値）
-  STFLR_DISCOUNT_THRESHOLD: parseFloat(process.env.STFLR_DISCOUNT_THRESHOLD || '0.005'),
+  STFLR_DISCOUNT_THRESHOLD: parseFloat(process.env.STFLR_DISCOUNT_THRESHOLD || '0.0008'),
+  // stFLR: DEXが高いと判定するしきい値（公式 - DEX < この値）
+  STFLR_PREMIUM_THRESHOLD: parseFloat(process.env.STFLR_PREMIUM_THRESHOLD || '-0.0002'),
 
   // ===== 共通設定 =====
   FLARE_RPC_URL: 'https://flare-api.flare.network/ext/C/rpc',
@@ -284,9 +286,10 @@ async function checkStflrPrice() {
     console.log(`  DEX価格:      ${dexPrice.toFixed(4)} WFLR`);
     console.log(`  SparkDEX公式: ${officialRate.toFixed(4)} FLR`);
     console.log(`  差額(公式-DEX): ${diff.toFixed(4)} FLR`);
-    console.log(`  しきい値:     ${CONFIG.STFLR_DISCOUNT_THRESHOLD} FLR`);
+    console.log(`  安いしきい値: >= ${CONFIG.STFLR_DISCOUNT_THRESHOLD} FLR`);
+    console.log(`  売りしきい値: < ${CONFIG.STFLR_PREMIUM_THRESHOLD} FLR`);
 
-    // 条件1: 公式 - DEX >= 0.005 → DEXの方が安い！
+    // 条件1: 公式 - DEX >= 0.0008 → DEXの方が安い！
     if (diff >= CONFIG.STFLR_DISCOUNT_THRESHOLD) {
       console.log('💰 DEXの方が安い！');
       await sendEmailAlert({
@@ -299,8 +302,8 @@ async function checkStflrPrice() {
         officialUrl: 'https://sparkdex.ai/stflr/stake',
       });
     }
-    // 条件2: 公式 - DEX < 0 → DEXの方が高い！売り時！
-    else if (diff < 0) {
+    // 条件2: 公式 - DEX < -0.0002 → DEXの方が高い！売り時！
+    else if (diff < CONFIG.STFLR_PREMIUM_THRESHOLD) {
       console.log('🚀 売り時！DEXの方が高い！');
       await sendEmailAlert({
         tokenName: 'stFLR',
