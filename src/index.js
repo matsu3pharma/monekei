@@ -93,7 +93,7 @@ async function getDexPrice(pairAddress, tokenSymbol) {
         lstPrice = priceNative;
       }
 
-      console.log(`[DexScreener ${tokenSymbol}] 計算後: 1 ${tokenSymbol} = ${lstPrice.toFixed(4)} WFLR`);
+      console.log(`[DexScreener ${tokenSymbol}] 計算後: 1 ${tokenSymbol} = ${lstPrice.toFixed(6)} WFLR`);
       return lstPrice;
     }
 
@@ -116,7 +116,7 @@ async function getExchangeRate(contractAddress, tokenName) {
     const flrAmount = await contract.getPooledFlrByShares(oneLST);
 
     const exchangeRate = parseFloat(ethers.formatEther(flrAmount));
-    console.log(`[${tokenName}公式] 交換レート: 1 ${tokenName} = ${exchangeRate.toFixed(4)} FLR`);
+    console.log(`[${tokenName}公式] 交換レート: 1 ${tokenName} = ${exchangeRate.toFixed(6)} FLR`);
 
     return exchangeRate;
   } catch (error) {
@@ -176,15 +176,15 @@ async function sendEmailAlert(options) {
         </tr>
         <tr>
           <td>DexScreener (DEX価格)</td>
-          <td>${dexPrice.toFixed(4)} WFLR</td>
+          <td>${dexPrice.toFixed(6)} WFLR</td>
         </tr>
         <tr>
           <td>公式レート</td>
-          <td>${officialRate.toFixed(4)} FLR</td>
+          <td>${officialRate.toFixed(6)} FLR</td>
         </tr>
       </table>
 
-      <p><strong>差額（公式 - DEX）: ${diff.toFixed(4)} FLR</strong></p>
+      <p><strong>差額（公式 - DEX）: ${diff.toFixed(6)} FLR</strong></p>
 
       <h3>リンク</h3>
       <ul>
@@ -224,9 +224,9 @@ async function checkSflrPrice() {
     const diff = officialRate - dexPrice;
 
     console.log(`\n[sFLR 比較結果]`);
-    console.log(`  DEX価格:     ${dexPrice.toFixed(4)} WFLR`);
-    console.log(`  Sceptre公式: ${officialRate.toFixed(4)} FLR`);
-    console.log(`  差額(公式-DEX): ${diff.toFixed(4)} FLR`);
+    console.log(`  DEX価格:     ${dexPrice.toFixed(6)} WFLR`);
+    console.log(`  Sceptre公式: ${officialRate.toFixed(6)} FLR`);
+    console.log(`  差額(公式-DEX): ${diff.toFixed(6)} FLR`);
     console.log(`  しきい値:    ${CONFIG.SFLR_DISCOUNT_THRESHOLD} FLR`);
 
     // 条件1: 公式 - DEX >= 0.025 → DEXの方が安い！
@@ -283,9 +283,9 @@ async function checkStflrPrice() {
     const diff = officialRate - dexPrice;
 
     console.log(`\n[stFLR 比較結果]`);
-    console.log(`  DEX価格:      ${dexPrice.toFixed(4)} WFLR`);
-    console.log(`  SparkDEX公式: ${officialRate.toFixed(4)} FLR`);
-    console.log(`  差額(公式-DEX): ${diff.toFixed(4)} FLR`);
+    console.log(`  DEX価格:      ${dexPrice.toFixed(6)} WFLR`);
+    console.log(`  SparkDEX公式: ${officialRate.toFixed(6)} FLR`);
+    console.log(`  差額(公式-DEX): ${diff.toFixed(6)} FLR`);
     console.log(`  安いしきい値: >= ${CONFIG.STFLR_DISCOUNT_THRESHOLD} FLR`);
     console.log(`  売りしきい値: < ${CONFIG.STFLR_PREMIUM_THRESHOLD} FLR`);
 
