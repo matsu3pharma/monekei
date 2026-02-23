@@ -45,6 +45,13 @@ const CONFIG = {
   // stFLR: DEXが高いと判定するしきい値（公式 - DEX < この値）
   STFLR_PREMIUM_THRESHOLD: parseFloat(process.env.STFLR_PREMIUM_THRESHOLD || '-0.0002'),
 
+  // ===== Bitcoin 設定 =====
+  BTC_ENABLED: process.env.BTC_ENABLED !== 'false',
+  // 前日比でこの値（%）以上下落したらアラート（マイナスで指定: -5 = 5%下落）
+  BTC_DROP_THRESHOLD: parseFloat(process.env.BTC_DROP_THRESHOLD || '5.0'),
+  // アラートを再送するまでの間隔（ミリ秒）: デフォルト1時間
+  BTC_ALERT_COOLDOWN: parseInt(process.env.BTC_ALERT_COOLDOWN || '3600000', 10),
+
   // ===== 共通設定 =====
   FLARE_RPC_URL: 'https://flare-api.flare.network/ext/C/rpc',
   GMAIL_USER: process.env.GMAIL_USER || '',
@@ -52,6 +59,9 @@ const CONFIG = {
   NOTIFY_EMAIL: process.env.NOTIFY_EMAIL || '',
   CHECK_INTERVAL: parseInt(process.env.CHECK_INTERVAL || '60000', 10),
 };
+
+// BTCアラートの最終送信時刻（連続送信防止用）
+let lastBtcAlertTime = 0;
 
 // LST コントラクト ABI
 const LST_ABI = [
@@ -126,7 +136,35 @@ async function getExchangeRate(contractAddress, tokenName) {
 }
 
 /**
- * Gmail経由でメール送信
+ * CoinGecko APIからBitcoin価格と24時間変化率を取得
+ */
+async function getBitcoinPrice() {
+  const url = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,jpy&include_24hr_change=true';
+
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (data.bitcoin) {
+      const priceUsd = data.bitcoin.usd;
+      const priceJpy = data.bitcoin.jpy;
+      const change24h = data.bitcoin.usd_24h_change;
+
+      console.log(`[Bitcoin] 現在価格: $${priceUsd.toLocaleString()} / ¥${priceJpy.toLocaleString()}`);
+      console.log(`[Bitcoin] 24時間変化率: ${change24h.toFixed(2)}%`);
+
+      return { priceUsd, priceJpy, change24h };
+    }
+
+    throw new Error('CoinGecko APIからBitcoin価格を取得できませんでした');
+  } catch (error) {
+    console.error('[Bitcoin] エラー:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Gmail経由でメール送信（LST用）
  */
 async function sendEmailAlert(options) {
   const { tokenName, dexPrice, officialRate, diff, alertType, dexUrl, officialUrl } = options;
@@ -201,6 +239,66 @@ async function sendEmailAlert(options) {
   try {
     await transporter.sendMail(mailOptions);
     console.log(`[Gmail] ${tokenName}アラートメールを送信しました: ${CONFIG.NOTIFY_EMAIL}`);
+    return true;
+  } catch (error) {
+    console.error('[Gmail] メール送信エラー:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Gmail経由でBitcoin急落アラートを送信
+ */
+async function sendBitcoinAlert(priceUsd, priceJpy, change24h) {
+  if (!CONFIG.GMAIL_USER || !CONFIG.GMAIL_APP_PASSWORD || !CONFIG.NOTIFY_EMAIL) {
+    console.warn('[Gmail] メール設定が不完全です。.envファイルを確認してください。');
+    return false;
+  }
+
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: CONFIG.GMAIL_USER,
+      pass: CONFIG.GMAIL_APP_PASSWORD,
+    },
+  });
+
+  const mailOptions = {
+    from: CONFIG.GMAIL_USER,
+    to: CONFIG.NOTIFY_EMAIL,
+    subject: `📉 ビットコイン急落！前日比 ${change24h.toFixed(2)}%`,
+    html: `
+      <h2>⚠️ ビットコイン価格急落アラート</h2>
+      <p>ビットコインが前日比 <strong style="color: red;">${change24h.toFixed(2)}%</strong> 下落しました。</p>
+
+      <table border="1" cellpadding="10" style="border-collapse: collapse;">
+        <tr>
+          <th>通貨</th>
+          <th>現在価格</th>
+          <th>前日比</th>
+        </tr>
+        <tr>
+          <td>USD</td>
+          <td>$${priceUsd.toLocaleString()}</td>
+          <td style="color: red;">${change24h.toFixed(2)}%</td>
+        </tr>
+        <tr>
+          <td>JPY</td>
+          <td>¥${priceJpy.toLocaleString()}</td>
+          <td style="color: red;">${change24h.toFixed(2)}%</td>
+        </tr>
+      </table>
+
+      <p style="color: gray; font-size: 12px;">
+        検出時刻: ${new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })}<br>
+        ※ 次のアラートは1時間後以降に送信されます
+      </p>
+    `,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log(`[Gmail] Bitcoinアラートメールを送信しました: ${CONFIG.NOTIFY_EMAIL}`);
     return true;
   } catch (error) {
     console.error('[Gmail] メール送信エラー:', error.message);
@@ -328,6 +426,41 @@ async function checkStflrPrice() {
 }
 
 /**
+ * Bitcoinの価格をチェックしてアラートを送信
+ */
+async function checkBitcoinPrice() {
+  console.log('\n--- Bitcoin 価格チェック ---');
+
+  try {
+    const { priceUsd, priceJpy, change24h } = await getBitcoinPrice();
+
+    // 前日比が -BTC_DROP_THRESHOLD% 以下なら急落アラート
+    if (change24h <= -CONFIG.BTC_DROP_THRESHOLD) {
+      const now = Date.now();
+      const timeSinceLastAlert = now - lastBtcAlertTime;
+
+      if (timeSinceLastAlert >= CONFIG.BTC_ALERT_COOLDOWN) {
+        console.log(`📉 急落検出！前日比 ${change24h.toFixed(2)}%`);
+        const sent = await sendBitcoinAlert(priceUsd, priceJpy, change24h);
+        if (sent) {
+          lastBtcAlertTime = now;
+        }
+      } else {
+        const remainMin = Math.ceil((CONFIG.BTC_ALERT_COOLDOWN - timeSinceLastAlert) / 60000);
+        console.log(`📉 急落中（前日比 ${change24h.toFixed(2)}%）- クールダウン中（あと約${remainMin}分）`);
+      }
+    } else {
+      console.log(`✓ アラート条件を満たしていません (前日比: ${change24h.toFixed(2)}%)`);
+    }
+
+    return { priceUsd, priceJpy, change24h };
+  } catch (error) {
+    console.error('❌ Bitcoin価格チェックエラー:', error.message);
+    return null;
+  }
+}
+
+/**
  * すべての価格をチェック
  */
 async function checkAllPrices() {
@@ -342,6 +475,10 @@ async function checkAllPrices() {
   if (CONFIG.STFLR_ENABLED) {
     await checkStflrPrice();
   }
+
+  if (CONFIG.BTC_ENABLED) {
+    await checkBitcoinPrice();
+  }
 }
 
 /**
@@ -349,17 +486,19 @@ async function checkAllPrices() {
  */
 async function main() {
   console.log('╔══════════════════════════════════════╗');
-  console.log('║   LST 価格差アラート モニター        ║');
-  console.log('║   (sFLR / stFLR)                     ║');
+  console.log('║   LST & BTC 価格アラート モニター   ║');
+  console.log('║   (sFLR / stFLR / Bitcoin)           ║');
   console.log('╚══════════════════════════════════════╝');
   console.log(`監視対象:`);
   console.log(`  sFLR (Sceptre):   ${CONFIG.SFLR_ENABLED ? '有効' : '無効'}`);
   console.log(`  stFLR (SparkDEX): ${CONFIG.STFLR_ENABLED ? '有効' : '無効'}`);
+  console.log(`  Bitcoin:          ${CONFIG.BTC_ENABLED ? '有効' : '無効'}`);
   console.log(`設定:`);
-  console.log(`  sFLR しきい値:  ${CONFIG.SFLR_DISCOUNT_THRESHOLD} FLR`);
-  console.log(`  stFLR しきい値: ${CONFIG.STFLR_DISCOUNT_THRESHOLD} FLR`);
-  console.log(`  監視間隔:       ${CONFIG.CHECK_INTERVAL / 1000} 秒`);
-  console.log(`  通知先:         ${CONFIG.NOTIFY_EMAIL || '(未設定)'}`);
+  console.log(`  sFLR しきい値:    ${CONFIG.SFLR_DISCOUNT_THRESHOLD} FLR`);
+  console.log(`  stFLR しきい値:   ${CONFIG.STFLR_DISCOUNT_THRESHOLD} FLR`);
+  console.log(`  BTC 急落しきい値: -${CONFIG.BTC_DROP_THRESHOLD}%`);
+  console.log(`  監視間隔:         ${CONFIG.CHECK_INTERVAL / 1000} 秒`);
+  console.log(`  通知先:           ${CONFIG.NOTIFY_EMAIL || '(未設定)'}`);
   console.log('----------------------------------------');
 
   await checkAllPrices();
