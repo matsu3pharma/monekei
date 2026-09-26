@@ -11,6 +11,7 @@
 """
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -21,8 +22,23 @@ except ImportError:
     sys.exit("yt-dlp が見つかりません。`pip install -r requirements.txt` を実行してください。")
 
 
+def find_ffmpeg() -> bool:
+    """ffmpeg が使えるか調べる。winget で入れた直後で PATH に無い場合も探す。"""
+    if shutil.which("ffmpeg"):
+        return True
+    candidates = [
+        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links",
+        Path(os.environ.get("ProgramFiles", "")) / "WinGet" / "Links",
+    ]
+    for links in candidates:
+        if (links / "ffmpeg.exe").exists():
+            os.environ["PATH"] = str(links) + os.pathsep + os.environ.get("PATH", "")
+            return True
+    return False
+
+
 def check_ffmpeg() -> None:
-    if shutil.which("ffmpeg") is None:
+    if not find_ffmpeg():
         sys.exit(
             "ffmpeg が見つかりません。MP3 変換に必要なのでインストールしてください。\n"
             "  Windows: winget install ffmpeg\n"

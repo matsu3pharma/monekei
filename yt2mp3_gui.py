@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import shutil
 import subprocess
 import sys
 import threading
@@ -21,7 +20,7 @@ except ImportError:
     )
     sys.exit(1)
 
-from yt2mp3 import download_mp3, fetch_info
+from yt2mp3 import download_mp3, fetch_info, find_ffmpeg
 
 DEFAULT_DIR = Path.home() / "Music" / "yt2mp3"
 
@@ -90,7 +89,7 @@ class App:
         if not url:
             messagebox.showwarning("yt2mp3", "URL を入力してください。")
             return
-        if shutil.which("ffmpeg") is None:
+        if not find_ffmpeg():
             messagebox.showerror("yt2mp3", "ffmpeg が見つかりません。README の手順でインストールしてください。")
             return
         self.ok_button.state(["disabled"])
