@@ -22,19 +22,34 @@ except ImportError:
     sys.exit("yt-dlp が見つかりません。`pip install -r requirements.txt` を実行してください。")
 
 
-def find_ffmpeg() -> bool:
-    """ffmpeg が使えるか調べる。winget で入れた直後で PATH に無い場合も探す。"""
-    if shutil.which("ffmpeg"):
-        return True
+def add_winget_links_to_path() -> None:
+    """winget で入れた直後のツール（ffmpeg・deno）は PATH に無いことがあるので追加する。"""
     candidates = [
         Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Links",
         Path(os.environ.get("ProgramFiles", "")) / "WinGet" / "Links",
     ]
+    paths = os.environ.get("PATH", "").split(os.pathsep)
     for links in candidates:
-        if (links / "ffmpeg.exe").exists():
+        if links.is_dir() and str(links) not in paths:
             os.environ["PATH"] = str(links) + os.pathsep + os.environ.get("PATH", "")
-            return True
-    return False
+
+
+def find_ffmpeg() -> bool:
+    """ffmpeg が使えるか調べる。"""
+    add_winget_links_to_path()
+    return shutil.which("ffmpeg") is not None
+
+
+def explain_error(message: str) -> str:
+    """よくあるエラーに、分かりやすい説明を付ける。"""
+    if "403" in message:
+        return (
+            f"{message}\n\n"
+            "YouTube にダウンロードを断られました（HTTP 403）。\n"
+            "yt-dlp が古いか、Deno が入っていないとよく起こります。\n"
+            "setup.bat をもう一度ダブルクリックして更新してから、試してください。"
+        )
+    return message
 
 
 def check_ffmpeg() -> None:
@@ -104,7 +119,7 @@ def main() -> int:
             download_mp3(url, out_dir, args.quality)
             print(f"  完了 → {out_dir.resolve()}")
         except yt_dlp.utils.DownloadError as e:
-            print(f"  エラー: {e}", file=sys.stderr)
+            print(f"  エラー: {explain_error(str(e))}", file=sys.stderr)
             failed += 1
     return 1 if failed else 0
 

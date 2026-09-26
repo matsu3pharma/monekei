@@ -10,7 +10,7 @@ echo.
 set "PY="
 call :findpy
 if not defined PY (
-  echo [1/4] Python を入れています…　しばらく待ってね
+  echo [1/5] Python を入れています…　しばらく待ってね
   winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
   call :findpy
 )
@@ -21,23 +21,32 @@ if not defined PY (
   pause
   exit /b 1
 )
-echo [1/4] Python … OK
+echo [1/5] Python … OK
 
 set "FF="
 where ffmpeg >nul 2>&1 && set "FF=1"
 if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe" set "FF=1"
 if not defined FF (
-  echo [2/4] ffmpeg を入れています…　しばらく待ってね
+  echo [2/5] ffmpeg を入れています…　しばらく待ってね
   winget install -e --id Gyan.FFmpeg --accept-source-agreements --accept-package-agreements
 )
-echo [2/4] ffmpeg … OK
+echo [2/5] ffmpeg … OK
 
-echo [3/4] ライブラリを入れています…
+set "DN="
+where deno >nul 2>&1 && set "DN=1"
+if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\deno.exe" set "DN=1"
+if not defined DN (
+  echo [3/5] Deno を入れています…　しばらく待ってね
+  winget install -e --id DenoLand.Deno --accept-source-agreements --accept-package-agreements
+)
+echo [3/5] Deno … OK
+
+echo [4/5] ライブラリを入れています…
 "%PY%" -m pip install --upgrade -r requirements.txt
 if errorlevel 1 goto fail
-echo [3/4] ライブラリ … OK
+echo [4/5] ライブラリ … OK
 
-echo [4/4] デスクトップにショートカットを作っています…
+echo [5/5] デスクトップにショートカットを作っています…
 "%PY%" create_shortcut.py
 if errorlevel 1 goto fail
 

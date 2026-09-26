@@ -20,7 +20,7 @@ except ImportError:
     )
     sys.exit(1)
 
-from yt2mp3 import download_mp3, fetch_info, find_ffmpeg
+from yt2mp3 import download_mp3, explain_error, fetch_info, find_ffmpeg
 
 DEFAULT_DIR = Path.home() / "Music" / "yt2mp3"
 
@@ -136,6 +136,7 @@ class App:
             download_mp3(url, out_dir, "192", progress_hook=hook)
         except Exception as e:
             self.root.after(0, self.finish, f"エラー: {e}")
+            self.root.after(0, messagebox.showerror, "yt2mp3", explain_error(str(e)))
             return
         self.root.after(0, self.finish, f"完了しました → {out_dir}")
         self.root.after(0, self.url.set, "")
