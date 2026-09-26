@@ -151,6 +151,11 @@ def main(argv: list[str] | None = None) -> int:
     m.add_argument("--once", action="store_true", help="run one iteration and exit")
     m.set_defaults(func=cmd_monitor)
 
+    for stream in (sys.stdout, sys.stderr):
+        try:  # legacy Windows consoles may not encode every character
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
     a = ap.parse_args(argv)
     try:
         return a.func(a)

@@ -40,6 +40,19 @@ export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...
 `--step`（乖離がさらにこれだけ拡大したら再通知）、`--cooldown`（同じ銘柄の再通知間隔・分）、`--show-unreliable`。
 履歴は `GET /api/history?base=XAUT&hours=24` で取れる。
 
+### Windows で使う
+
+- エクスプローラーで `scan.bat` をダブルクリック → 1回スキャンして結果を表示し、`result.csv` にも保存
+- `monitor.bat` をダブルクリック → 常時監視を開始し、ブラウザでダッシュボードを開く（止めるときは Ctrl+C）
+- PowerShell から実行する場合、Windows PowerShell 5.x は `&&` が使えないので1行ずつ実行する:
+
+```powershell
+cd monekei
+py -m bitget_divergence scan --top 40
+```
+
+`py` が無い場合は `python`。どちらも無ければ https://www.python.org/downloads/ からインストール（"Add python.exe to PATH" にチェック）。
+
 ### テスト
 
 ```bash
