@@ -20,6 +20,7 @@ class ScanConfig:
     min_ref_volume: float = 50_000
     min_ref_venues: int = 2
     max_ref_dispersion_pct: float = 3.0
+    max_plausible_div_pct: float = 30.0  # beyond this, assume a ticker collision
     dex_top: int = 15               # DEX-check the N largest divergences (0 = off)
     dex_min_liquidity: float = 200_000
     timeout: float = 15.0
@@ -63,11 +64,12 @@ def run_scan(cfg: ScanConfig) -> ScanResult:
         min_ref_volume=cfg.min_ref_volume,
         min_ref_venues=cfg.min_ref_venues,
         max_ref_dispersion_pct=cfg.max_ref_dispersion_pct,
+        max_plausible_div_pct=cfg.max_plausible_div_pct,
         coin_status=coin_status,
     )
 
     if cfg.dex_top > 0:
-        targets = divs[: cfg.dex_top]
+        targets = [d for d in divs if "ticker-mismatch" not in d.flags][: cfg.dex_top]
         with ThreadPoolExecutor(max_workers=4) as pool:
             futs = {d.base: pool.submit(dex.fetch_dex_price, d.base, cfg.dex_min_liquidity, cfg.timeout) for d in targets}
         for d in targets:
@@ -77,7 +79,8 @@ def run_scan(cfg: ScanConfig) -> ScanResult:
                 errors.setdefault("dexscreener", str(exc))
                 continue
             if price:
-                attach_dex(d, price.price_usd, f"{price.chain}/{price.dex} liq ${price.liquidity_usd:,.0f}")
+                attach_dex(d, price.price_usd, f"{price.chain}/{price.dex} liq ${price.liquidity_usd:,.0f}",
+                           cfg.max_plausible_div_pct)
 
     venue_ok = {"bitget": len(bitget), **{k: len(v) for k, v in references.items()}}
     return ScanResult(time.time(), divs, venue_ok, errors, coin_status is not None)

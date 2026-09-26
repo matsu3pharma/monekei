@@ -119,6 +119,30 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual([d.base for d in divs], ["BTC"])
 
 
+class TickerMismatchTests(unittest.TestCase):
+    def _divs(self):
+        bg = {"RAIN": Quote("bitget", "RAIN", 74.4, 74.5, 74.47, 1e7),
+              "DRIFT": Quote("bitget", "DRIFT", 0.01944, 0.01945, 0.01944, 1e5)}
+        refs = {v: {"RAIN": Quote(v, "RAIN", 0.01085, 0.01086, 0.01085, 1e6),
+                    "DRIFT": Quote(v, "DRIFT", 0.0201, 0.02011, 0.0201, 1e6)} for v in ("okx", "gate", "mexc")}
+        return {d.base: d for d in compute_divergences(bg, refs)}
+
+    def test_huge_gap_is_flagged_and_not_alerted(self):
+        by = self._divs()
+        self.assertIn("ticker-mismatch", by["RAIN"].flags)
+        self.assertNotIn("ticker-mismatch", by["DRIFT"].flags)
+        a = Alerter(AlertPolicy(threshold_pct=2.0))
+        self.assertEqual([d.base for d in a.evaluate(list(by.values()), now=0)], ["DRIFT"])
+
+    def test_implausible_dex_price_is_dropped(self):
+        from bitget_divergence.analysis import attach_dex
+        d = self._divs()["DRIFT"]
+        self.assertFalse(attach_dex(d, 0.0001, "other token"))  # -99% like MYX/LAB
+        self.assertIsNone(d.dex_price)
+        self.assertTrue(attach_dex(d, 0.0202, "real pool"))
+        self.assertAlmostEqual(d.dex_div_pct, (d.bitget_mid / 0.0202 - 1) * 100)
+
+
 class AlertTests(unittest.TestCase):
     def test_threshold_step_cooldown_reset(self):
         bg = exchanges.parse_bitget(BITGET)

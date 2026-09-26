@@ -48,7 +48,7 @@ input{width:70px;padding:3px 6px;background:var(--card);color:var(--fg);border:1
 <h1>Bitget 価格乖離モニター</h1>
 <div class="meta" id="meta">loading…</div>
 <div class="ctl"><label>|乖離| ≥ <input id="min" type="number" step="0.1" value="0.5"> %</label>
-<label><input id="rel" type="checkbox" checked style="width:auto"> ref-disagree を除外</label>
+<label><input id="rel" type="checkbox" checked style="width:auto"> 怪しい行(ref-disagree / ticker-mismatch)を除外</label>
 <label><input id="wd" type="checkbox" style="width:auto"> 出金停止コインのみ</label></div>
 <div class="wrap"><table><thead><tr><th>Coin</th><th>乖離%</th><th>Bitget</th><th>参照中央値</th><th>参照数</th>
 <th>Bitgetで売る%</th><th>Bitgetで買う%</th><th>DEX乖離%</th><th>Bitget 24h出来高</th><th>出金</th><th>入金</th><th>flags</th></tr></thead>
@@ -63,7 +63,7 @@ function render(j){const min=+document.getElementById("min").value||0,rel=docume
 const t=j.ts?new Date(j.ts*1000).toLocaleString():"未取得";const ven=Object.entries(j.venues||{}).map(([k,v])=>k+":"+v).join(" ");
 const err=Object.keys(j.errors||{}).length?" / エラー: "+Object.keys(j.errors).join(", "):"";
 document.getElementById("meta").textContent=`更新 ${t} ・ ${ven}${err}`;
-const rows=(j.rows||[]).filter(d=>Math.abs(d.div_pct)>=min&&(!rel||!d.flags.includes("ref-disagree"))&&(!wd||d.withdrawable===false));
+const rows=(j.rows||[]).filter(d=>Math.abs(d.div_pct)>=min&&(!rel||!(d.flags.includes("ref-disagree")||d.flags.includes("ticker-mismatch")))&&(!wd||d.withdrawable===false));
 document.getElementById("tb").innerHTML=rows.map(d=>`<tr><td><b>${d.base}</b></td><td class="${cls(d.div_pct)}">${fmt(d.div_pct)}</td>
 <td>${px(d.bitget_mid)}</td><td>${px(d.ref_mid)}</td><td title="${d.ref_venues.join(", ")}">${d.n_ref}</td>
 <td class="${cls(d.sell_on_bitget_pct)}">${fmt(d.sell_on_bitget_pct)}</td><td class="${cls(d.buy_on_bitget_pct)}">${fmt(d.buy_on_bitget_pct)}</td>

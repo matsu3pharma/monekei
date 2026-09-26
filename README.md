@@ -14,10 +14,11 @@ Python 3.10+ の標準ライブラリだけで動く（`pip install` 不要）�
 | `BUY@BG%` | 外部の最高買気配 ÷ Bitget の売気配 − 1。Bitget で買って**出金**する方向（出金停止中は実行不可） |
 | `DEX%` | 乖離が大きい上位 N 銘柄について DexScreener の最大流動性プールと比べた乖離（USDT≒USD 前提） |
 | `WD` / `DEP` | Bitget の公開 API から取った銘柄ごとの出金・入金状態 |
-| flags | `ref-disagree`: 参照取引所どうしで価格がずれている（同じティッカーで別トークンの可能性）/ `wide-spread` / `withdraw-off` / `deposit-off` |
+| flags | `ref-disagree`: 参照取引所どうしで価格がずれている（同じティッカーで別トークンの可能性）/ `ticker-mismatch`: 乖離が 30% 超で、Bitget が同名の別トークンを扱っている可能性が高い（`--max-div` で変更）/ `wide-spread` / `withdraw-off` / `deposit-off` |
 
 - 参照 CEX: Binance, OKX, Bybit, Gate, MEXC, KuCoin（USDT 建て現物）
 - 偽陽性を減らすため、既定では「24h 出来高 5 万 USDT 以上の参照取引所が 2 社以上」ある銘柄だけを対象にする
+- `ref-disagree` と `ticker-mismatch` の銘柄は既定で表・通知から除外（`--show-unreliable` で表示）。DEX 価格も参照中央値から 30% 超ずれていれば別トークンとみなして使わない
 - 手数料・板の厚さ・送金時間は計算に入っていない。表示される％は理論値
 
 ### 使い方

@@ -23,6 +23,8 @@ def _add_scan_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--min-venues", type=int, default=2, help="min number of reference venues quoting the coin")
     p.add_argument("--max-dispersion", type=float, default=3.0,
                    help="flag coin as ref-disagree when reference venues differ by more than this %%")
+    p.add_argument("--max-div", type=float, default=30.0,
+                   help="treat |div%%| above this as a different token with the same ticker (ticker-mismatch)")
     p.add_argument("--dex-top", type=int, default=15, help="cross-check the top N divergences on DexScreener (0 = off)")
     p.add_argument("--dex-min-liquidity", type=float, default=200_000)
     p.add_argument("--timeout", type=float, default=15.0)
@@ -35,6 +37,7 @@ def _config(a: argparse.Namespace) -> ScanConfig:
         raise SystemExit(f"unknown venue(s): {', '.join(unknown)}")
     return ScanConfig(venues=venues, min_bitget_volume=a.min_volume, min_ref_volume=a.min_volume,
                       min_ref_venues=a.min_venues, max_ref_dispersion_pct=a.max_dispersion,
+                      max_plausible_div_pct=a.max_div,
                       dex_top=a.dex_top, dex_min_liquidity=a.dex_min_liquidity, timeout=a.timeout)
 
 
@@ -131,7 +134,7 @@ def main(argv: list[str] | None = None) -> int:
     _add_scan_args(s)
     s.add_argument("--top", type=int, default=40)
     s.add_argument("--min-div", type=float, default=0.0, help="only show |div%%| >= this")
-    s.add_argument("--show-unreliable", action="store_true", help="include ref-disagree rows")
+    s.add_argument("--show-unreliable", action="store_true", help="include ref-disagree / ticker-mismatch rows")
     s.add_argument("-o", "--output", help="write all rows to .csv or .json")
     s.set_defaults(func=cmd_scan)
 

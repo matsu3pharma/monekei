@@ -43,6 +43,7 @@ def compute_divergences(
     min_ref_volume: float = 50_000,
     min_ref_venues: int = 2,
     max_ref_dispersion_pct: float = 3.0,
+    max_plausible_div_pct: float = 30.0,
     coin_status: dict[str, CoinStatus] | None = None,
 ) -> list[Divergence]:
     results: list[Divergence] = []
@@ -81,6 +82,8 @@ def compute_divergences(
         )
         if dispersion > max_ref_dispersion_pct:
             d.flags.append("ref-disagree")  # external venues disagree: possibly different tokens / illiquid
+        if abs(d.div_pct) > max_plausible_div_pct:
+            d.flags.append("ticker-mismatch")  # Bitget likely lists a different token under this ticker
         if (bq.spread_pct or 0) > 2:
             d.flags.append("wide-spread")
         if coin_status is not None:
@@ -98,11 +101,15 @@ def compute_divergences(
     return results
 
 
-def attach_dex(d: Divergence, price: float, info: str) -> None:
+def attach_dex(d: Divergence, price: float, info: str, max_plausible_div_pct: float = 30.0) -> bool:
+    """Attach a DEX price unless it is so far from the CEX reference that the pool is likely another token."""
+    if abs((d.ref_mid / price - 1) * 100) > max_plausible_div_pct:
+        return False
     d.dex_price = price
     d.dex_div_pct = (d.bitget_mid / price - 1) * 100
     d.dex_info = info
+    return True
 
 
 def is_reliable(d: Divergence) -> bool:
-    return "ref-disagree" not in d.flags
+    return "ref-disagree" not in d.flags and "ticker-mismatch" not in d.flags
