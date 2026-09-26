@@ -20,7 +20,21 @@ URL を渡すと、動画の音声を MP3 に変換して保存します。
    pip install -r requirements.txt
    ```
 
-### 使い方
+### ウィンドウ版（デスクトップのショートカットから使う）
+
+次のコマンドを1回だけ実行すると、デスクトップに「YouTube to MP3」のショートカットができます。
+
+```
+python create_shortcut.py
+```
+
+ショートカットをダブルクリック → URL を貼り付け → **OK**。
+タイトル・ライセンスの確認画面で「はい」を押すと、`ミュージック/yt2mp3` フォルダに MP3 が保存されます
+（保存先は「変更…」で変えられます）。
+
+> フォルダを移動した場合は、もう一度 `create_shortcut.py` を実行してショートカットを作り直してください。
+
+### コマンド版の使い方
 
 ```
 python yt2mp3.py https://www.youtube.com/watch?v=XXXXXXXXXXX

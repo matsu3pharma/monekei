@@ -47,8 +47,11 @@ def confirm(prompt: str) -> bool:
     return input(f"{prompt} [y/N]: ").strip().lower() in ("y", "yes")
 
 
-def download_mp3(url: str, out_dir: Path, quality: str) -> None:
+def download_mp3(url: str, out_dir: Path, quality: str, progress_hook=None) -> None:
     opts = {
+        "quiet": progress_hook is not None,
+        "noprogress": progress_hook is not None,
+        "progress_hooks": [progress_hook] if progress_hook else [],
         "format": "bestaudio/best",
         "noplaylist": True,
         "outtmpl": str(out_dir / "%(title)s.%(ext)s"),
