@@ -43,6 +43,8 @@ export TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...
 
 ### Windows で使う
 
+- **最初に1回だけ** `install_shortcuts.bat` をダブルクリック → デスクトップに「Bitget Scan」「Bitget Monitor」のショートカットができる
+- `scan.bat` / `monitor.bat` は起動時に自動で `git pull` して最新版にする
 - エクスプローラーで `scan.bat` をダブルクリック → 1回スキャンして結果を表示し、`result.csv` にも保存
 - `monitor.bat` をダブルクリック → 常時監視を開始し、ブラウザでダッシュボードを開く（止めるときは Ctrl+C）
 - PowerShell から実行する場合、Windows PowerShell 5.x は `&&` が使えないので1行ずつ実行する:
