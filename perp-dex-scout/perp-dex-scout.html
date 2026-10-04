@@ -1,0 +1,856 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Perp DEX スカウト</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%94%AD%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #66707c; --line: #e2e5ea;
+  --accent: #2b6cb0; --accent-text: #ffffff;
+  --new: #d64545; --update: #c77700; --known: #7a838f;
+  --waitlist: #8e5cd9; --testnet: #c77700; --mainnet: #1f8a4c; --unknown: #7a838f;
+  --ok: #1f8a4c; --warn: #b26a00;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171b; --card: #1d2126; --text: #e7eaee; --muted: #9aa3ad; --line: #2e343b;
+    --accent: #5a9be0; --accent-text: #0d1014;
+    --new: #ef6b6b; --update: #f0a83a; --known: #8b939d;
+    --waitlist: #b08cf0; --testnet: #f0a83a; --mainnet: #4cc184; --unknown: #8b939d;
+    --ok: #4cc184; --warn: #f0a83a;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif; font-size: 15px; line-height: 1.55; }
+a { color: var(--accent); word-break: break-all; }
+button { font: inherit; cursor: pointer; }
+.wrap { max-width: 820px; margin: 0 auto; padding: 16px; }
+header h1 { font-size: 18px; margin: 0 0 4px; }
+.summary { font-size: 20px; font-weight: 700; margin: 6px 0 12px; }
+.summary small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 8px 14px; }
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 700; }
+.btn:disabled { opacity: .6; cursor: progress; }
+.tabs { display: flex; gap: 4px; margin: 16px 0 12px; border-bottom: 1px solid var(--line); }
+.tab { border: 0; background: none; color: var(--muted); padding: 8px 12px; border-bottom: 3px solid transparent; }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); font-weight: 700; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+.card-head { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.card-head h2 { font-size: 17px; margin: 0 6px 0 0; word-break: break-word; }
+.badge { display: inline-block; font-size: 12px; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.badge.solid { color: #fff; border: 0; }
+.st-new { background: var(--new); } .st-update { background: var(--update); }
+.stage-waitlist { color: var(--waitlist); } .stage-testnet { color: var(--testnet); }
+.stage-mainnet { color: var(--mainnet); } .stage-unknown { color: var(--unknown); }
+.meta { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.desc { margin: 8px 0 0; padding-left: 18px; }
+.desc li { margin: 2px 0; }
+.orig { color: var(--muted); font-size: 13px; }
+.links { margin-top: 8px; font-size: 14px; display: grid; gap: 2px; }
+.links .dom { font-weight: 700; color: var(--text); }
+.checks { margin-top: 8px; font-size: 13px; display: grid; gap: 2px; }
+.checks .ok { color: var(--ok); } .checks .warn { color: var(--warn); }
+.actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+.actions .btn { padding: 5px 12px; font-size: 13px; }
+.btn.on { background: #f5c518; color: #1b1f24; border-color: #f5c518; }
+.empty { color: var(--muted); text-align: center; padding: 32px 0; }
+footer { margin-top: 24px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px; }
+footer .fail { color: var(--warn); }
+dialog { width: min(680px, calc(100vw - 32px)); border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--text); padding: 16px; }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+dialog label { display: block; font-weight: 700; margin-top: 12px; font-size: 14px; }
+dialog label span { font-weight: 400; color: var(--muted); font-size: 12px; }
+dialog textarea, dialog input[type=number] { width: 100%; font: 13px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+dialog textarea { min-height: 90px; }
+.row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; flex-wrap: wrap; }
+.spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔭 Perp DEX スカウト</h1>
+    <div class="summary" id="summary">チェック中…</div>
+    <div class="toolbar">
+      <button class="btn primary" id="recheck">再チェック</button>
+      <button class="btn" id="openSettings">設定</button>
+      <span class="meta" id="status"></span>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="new">新着</button>
+    <button class="tab" data-tab="known">既知</button>
+    <button class="tab" data-tab="starred">注目</button>
+  </nav>
+
+  <main id="list"></main>
+
+  <footer>
+    <div id="failed"></div>
+    <p>情報収集用。投資判断は自己責任。このアプリはウォレット接続・入金の機能を一切持ちません。新しい案件には偽サイトや乗っ取りアカウントが混ざるため、リンク先のドメインを必ず確かめてください。</p>
+  </footer>
+</div>
+
+<dialog id="settings">
+  <h2 style="margin:0;font-size:17px">設定</h2>
+  <p class="meta">1行に1つずつ書きます。保存するとこのブラウザに記録され、次のチェックから使われます。</p>
+  <label>必須キーワード <span>（ニュース・GitHubで、どれか1つを含むものだけ拾う）</span></label>
+  <textarea id="cfg-coreKeywords"></textarea>
+  <label>段階・話題キーワード <span>（テストネット・ポイントなどの判定用）</span></label>
+  <textarea id="cfg-signalKeywords"></textarea>
+  <label>ニュースのRSS URL</label>
+  <textarea id="cfg-rssFeeds"></textarea>
+  <label>除外リスト <span>（CEX・オプション専業など。名前またはXアカウント）</span></label>
+  <textarea id="cfg-exclude"></textarea>
+  <label>DefiLlamaのカテゴリ名 <span>（このカテゴリのプロトコルだけ拾う）</span></label>
+  <textarea id="cfg-defillamaCategories"></textarea>
+  <label>何日前までの情報を対象にするか</label>
+  <input type="number" id="cfg-lookbackDays" min="1" max="365">
+  <label>「興味なし」にした案件 <span>（行を消すと再表示されます）</span></label>
+  <textarea id="cfg-hidden"></textarea>
+  <div class="row">
+    <button class="btn" id="resetSettings">初期設定に戻す</button>
+    <button class="btn" id="resetAll">記録をすべて消す</button>
+    <button class="btn" id="closeSettings">閉じる</button>
+    <button class="btn primary" id="saveSettings">保存</button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+// ==CORE START==
+// 判定ロジック（ブラウザでもテストでも同じコードを使う）
+
+const DEFAULT_CONFIG = {
+  lookbackDays: 30,        // 何日前までの情報を対象にするか
+  firstRunDays: 14,        // 初回起動時、この日数以内のものだけ「新着」にする
+  cacheMinutes: 10,        // 取得結果を使い回す時間
+  timeoutMs: 20000,        // 情報源1つあたりの待ち時間
+  coreKeywords: ['perp dex', 'perps dex', 'perp', 'perps', 'perpetual', 'perpetuals', 'derivatives exchange', 'derivatives dex', 'decentralized derivatives'],
+  signalKeywords: ['testnet', 'mainnet launch', 'mainnet', 'points program', 'points', 'waitlist', 'raises', 'seed round', 'airdrop', 'goes live'],
+  defillamaCategories: ['Derivatives', 'Perps', 'Perpetuals'],
+  rssFeeds: [
+    'https://www.theblock.co/rss.xml',
+    'https://www.coindesk.com/arc/outboundfeeds/rss/',
+    'https://cointelegraph.com/rss',
+    'https://decrypt.co/feed',
+    'https://thedefiant.io/api/feed',
+  ],
+  // RSSはブラウザから直接読めないため、公開の中継サービスを順に試す
+  rssProxies: [
+    'https://api.allorigins.win/raw?url=',
+    'https://corsproxy.io/?url=',
+    'rss2json:https://api.rss2json.com/v1/api.json?rss_url=',
+  ],
+  exclude: [
+    'Binance', 'Bybit', 'OKX', 'Coinbase', 'Kraken', 'Bitget', 'Gate', 'Gate.io', 'KuCoin', 'MEXC', 'HTX', 'Huobi',
+    'BingX', 'Bitfinex', 'BitMEX', 'Deribit', 'Crypto.com', 'Upbit', 'Bithumb', 'Robinhood', 'CME', 'Kalshi', 'Polymarket',
+    'Lyra', 'Derive', 'Premia', 'Dopex', 'Stryke', 'Panoptic', 'Hegic', 'Typus', 'Opyn', 'Ribbon',
+  ],
+  hyperliquidTestnet: false, // trueにするとHyperliquidテストネットのHIP-3も調べる（試験的なものが多い）
+};
+
+const STAGES = ['unknown', 'waitlist', 'testnet', 'mainnet'];
+const STAGE_JA = { unknown: '段階不明', waitlist: 'ウェイトリスト', testnet: 'テストネット', mainnet: 'メインネット' };
+const SOURCE_JA = { defillama: 'DefiLlama', github: 'DefiLlama-Adapters (GitHub)', raises: 'DefiLlama 資金調達', hyperliquid: 'Hyperliquid HIP-3', news: 'ニュース' };
+const SOURCE_PRIORITY = ['defillama', 'github', 'raises', 'hyperliquid', 'news'];
+const SHARED_HOSTS = ['github.com', 'twitter.com', 'x.com', 'medium.com', 't.me', 'linktr.ee', 'gitbook.io', 'notion.site', 'vercel.app', 'netlify.app', 'github.io', 'mirror.xyz', 'discord.gg', 'discord.com', 'youtube.com', 'google.com', 'substack.com', 'paragraph.xyz', 'defillama.com', 'hyperliquid.xyz'];
+const CHAIN_NAMES = ['Hyperliquid', 'Arbitrum', 'Base', 'Solana', 'Ethereum', 'BNB Chain', 'BSC', 'Sui', 'Aptos', 'Starknet', 'Sei', 'Monad', 'Berachain', 'MegaETH', 'Flare', 'Injective', 'Blast', 'zkSync', 'Avalanche', 'TON', 'Sonic', 'Optimism', 'Polygon', 'Linea', 'Scroll', 'Mantle', 'Plasma', 'Movement', 'Abstract', 'Unichain', 'Ink'];
+const NAME_STOPWORDS = ['bitcoin', 'ethereum', 'solana', 'crypto', 'defi', 'the', 'sec', 'us', 'trump', 'this', 'why', 'how', 'what', 'new', 'a', 'an', 'cftc', 'report', 'exclusive', 'breaking'];
+
+function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
+
+function hasKeyword(text, keywords) {
+  if (!text) return false;
+  return keywords.some(k => k && new RegExp('(^|[^a-z0-9])' + escapeRe(k.trim()), 'i').test(text));
+}
+
+function normalizeName(name) {
+  if (!name) return '';
+  let s = String(name).normalize('NFKC').toLowerCase();
+  const stripped = s.replace(/\b(dex|exchange|finance|protocol)\b/g, ' ').replace(/[^\p{L}\p{N}]+/gu, '');
+  return stripped || s.replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+function normalizeTwitter(t) {
+  if (!t) return '';
+  let s = String(t).trim();
+  const m = s.match(/(?:twitter\.com|x\.com)\/(?:#!\/)?@?([A-Za-z0-9_]{1,15})/i);
+  if (m) s = m[1];
+  s = s.replace(/^@/, '');
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(s)) return '';
+  if (['home', 'intent', 'share', 'search', 'i'].includes(s.toLowerCase())) return '';
+  return s.toLowerCase();
+}
+
+function hostOf(url) {
+  if (!url) return '';
+  try {
+    const u = new URL(/^https?:\/\//i.test(url) ? url : 'https://' + url);
+    return u.hostname.replace(/^www\./, '').toLowerCase();
+  } catch (e) { return ''; }
+}
+
+function baseDomain(url) {
+  const h = hostOf(url);
+  if (!h) return '';
+  const parts = h.split('.');
+  const base = parts.slice(-2).join('.');
+  if (SHARED_HOSTS.includes(base) || SHARED_HOSTS.includes(h)) return '';
+  return base;
+}
+
+function cleanUrl(url) {
+  if (!url) return '';
+  const s = String(url).trim();
+  if (!/^https?:\/\//i.test(s)) return /^[a-z0-9-]+(\.[a-z0-9-]+)+(\/.*)?$/i.test(s) ? 'https://' + s : '';
+  return s;
+}
+
+function stageRank(s) { const i = STAGES.indexOf(s); return i < 0 ? 0 : i; }
+function maxStage(a, b) { return stageRank(a) >= stageRank(b) ? a : b; }
+
+function detectStage(text) {
+  const t = (text || '').toLowerCase();
+  if (/main\s?net|goes live|now live|is live|went live|live on/.test(t)) return 'mainnet';
+  if (/test\s?net|devnet|public beta/.test(t)) return 'testnet';
+  if (/wait\s?list|early access|whitelist|sign[- ]?ups?/.test(t)) return 'waitlist';
+  return 'unknown';
+}
+
+function detectTopicsJa(text) {
+  const t = (text || '').toLowerCase();
+  const out = [];
+  if (/main\s?net|goes live|now live/.test(t)) out.push('メインネット');
+  if (/test\s?net|devnet/.test(t)) out.push('テストネット');
+  if (/wait\s?list|early access/.test(t)) out.push('ウェイトリスト');
+  if (/points?\b/.test(t)) out.push('ポイント施策');
+  if (/airdrop|token generation|\btge\b/.test(t)) out.push('エアドロップ/TGE');
+  if (/raise[sd]?\b|funding|seed round|series [a-c]|pre-seed|strategic round/.test(t)) out.push('資金調達');
+  if (/hack|exploit|drain/.test(t)) out.push('⚠️ハッキング関連');
+  return out;
+}
+
+function detectChains(text) {
+  if (!text) return [];
+  return CHAIN_NAMES.filter(c => new RegExp('(^|[^A-Za-z])' + escapeRe(c) + '($|[^A-Za-z])').test(text));
+}
+
+// 英語の見出しから案件名を推測する（例: "Foo launches perp DEX on Base" → "Foo"）
+function extractNameFromHeadline(title) {
+  if (!title) return '';
+  const verbs = 'launches|launched|unveils|unveiled|debuts|debuted|raises|raised|secures|secured|goes live|opens|announces|introduces|rolls out|kicks off|expands|lists|integrates|partners|teases|releases|deploys|bags|lands|closes|nets';
+  const m = title.match(new RegExp("^(?:(?:[A-Za-z-]+ )?(?:[Pp]erp(?:etual)?s?|[Dd]erivatives) (?:DEX|[Ee]xchange|[Pp]latform|[Pp]rotocol) )?((?:[A-Z0-9$][\\w.$'’-]*)(?:\\s+[A-Z0-9][\\w.$'’-]*){0,2})\\s*(?:,[^,]{0,60},\\s*)?(?:" + verbs + ")\\b"));
+  if (!m) return '';
+  let name = m[1].replace(/['’]s$/, '').trim();
+  if (NAME_STOPWORDS.includes(name.toLowerCase())) return '';
+  if (/^(crypto|defi|perp|perps|derivatives)\b/i.test(name)) return '';
+  return name;
+}
+
+function isExcluded(item, cfg) {
+  const ex = (cfg.exclude || []).map(normalizeName).filter(Boolean);
+  const exT = (cfg.exclude || []).map(normalizeTwitter).filter(Boolean);
+  if (ex.includes(normalizeName(item.name))) return true;
+  if (item.twitter && exT.includes(normalizeTwitter(item.twitter))) return true;
+  return false;
+}
+
+function fmtDate(ms) {
+  if (!ms) return '';
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtShort(ms) {
+  const d = new Date(ms);
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+function fmtUsdM(m) {
+  if (m == null || isNaN(m)) return '金額非公開';
+  return m >= 1000 ? `$${(m / 1000).toFixed(2)}B` : `$${Number(m).toLocaleString('en-US', { maximumFractionDigits: 1 })}M`;
+}
+function fmtUsd(n) {
+  if (!n) return '$0';
+  if (n >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
+  if (n >= 1e6) return `$${(n / 1e6).toFixed(1)}M`;
+  if (n >= 1e3) return `$${(n / 1e3).toFixed(0)}K`;
+  return `$${Math.round(n)}`;
+}
+
+// ---- 各情報源のレスポンスを共通の形にそろえる ----
+// 共通の形: { name, chain, stage, url, twitter, source, sourceUrl, detectedAt, descJa, original, listed, raise }
+
+function parseDefiLlamaProtocols(data, cfg, now) {
+  const cats = (cfg.defillamaCategories || []).map(c => c.toLowerCase());
+  const since = now - cfg.lookbackDays * 864e5;
+  const deriv = (Array.isArray(data) ? data : []).filter(p => p && cats.includes(String(p.category || '').toLowerCase()));
+  // 掲載済みかどうかの照合用（軽い形だけ残す）
+  const index = deriv.map(p => ({
+    name: p.name, slug: p.slug, url: cleanUrl(p.url), twitter: normalizeTwitter(p.twitter),
+    audits: Number(p.audits || 0), tvl: Number(p.tvl || 0), chains: p.chains || (p.chain ? [p.chain] : []),
+    listedAt: p.listedAt ? p.listedAt * 1000 : null, category: p.category,
+  }));
+  const items = index.filter(p => p.listedAt && p.listedAt >= since).map(p => ({
+    name: p.name,
+    chain: p.chains,
+    stage: 'mainnet',
+    url: p.url,
+    twitter: p.twitter,
+    source: 'defillama',
+    sourceUrl: p.slug ? `https://defillama.com/protocol/${p.slug}` : 'https://defillama.com/',
+    detectedAt: p.listedAt,
+    descJa: `DefiLlamaに掲載（${fmtDate(p.listedAt).slice(0, 10)}、カテゴリ: ${p.category}、TVL ${fmtUsd(p.tvl)}、監査 ${p.audits}件）`,
+    listed: { audits: p.audits, tvl: p.tvl },
+  }));
+  return { items, index };
+}
+
+function parseRaises(data, cfg, now) {
+  const since = now - cfg.lookbackDays * 864e5;
+  const cats = (cfg.defillamaCategories || []).map(c => c.toLowerCase());
+  const list = (data && Array.isArray(data.raises)) ? data.raises : (Array.isArray(data) ? data : []);
+  return list.filter(r => {
+    if (!r || !r.date || r.date * 1000 < since) return false;
+    if (cats.includes(String(r.category || '').toLowerCase())) return true;
+    return hasKeyword([r.sector, r.category, r.name].join(' '), cfg.coreKeywords);
+  }).map(r => {
+    const lead = (r.leadInvestors || []).join(', ');
+    const date = r.date * 1000;
+    return {
+      name: r.name,
+      chain: r.chains || [],
+      stage: 'unknown',
+      url: '',
+      twitter: '',
+      source: 'raises',
+      sourceUrl: cleanUrl(r.source) || 'https://defillama.com/raises',
+      detectedAt: date,
+      descJa: `${fmtDate(date).slice(0, 10)} ${r.round || '資金調達'}で${fmtUsdM(r.amount)}を調達` + (lead ? `（リード: ${lead}）` : '') + (r.sector ? ` ／ 事業: ${r.sector}` : ''),
+      raise: { amount: r.amount, round: r.round, lead },
+    };
+  });
+}
+
+function parsePrBody(body) {
+  const out = {};
+  if (!body) return out;
+  const sections = String(body).replace(/\r/g, '').split(/^#{2,6}\s*/m);
+  for (const sec of sections) {
+    const nl = sec.indexOf('\n');
+    if (nl < 0) continue;
+    const label = sec.slice(0, nl).toLowerCase();
+    const value = sec.slice(nl + 1).replace(/<!--[\s\S]*?-->/g, '').trim().split('\n').map(s => s.trim()).filter(Boolean)[0] || '';
+    if (!value) continue;
+    if (/^name/.test(label)) out.name = value;
+    else if (/twitter/.test(label)) out.twitter = value;
+    else if (/website/.test(label)) out.url = value;
+    else if (/category/.test(label)) out.category = value;
+    else if (/^chain/.test(label)) out.chain = value;
+    else if (/short description|description/.test(label)) out.description = value;
+  }
+  return out;
+}
+
+function parseGithubPulls(data, cfg, now) {
+  const since = now - cfg.lookbackDays * 864e5;
+  const derivCats = (cfg.defillamaCategories || []).map(c => c.toLowerCase());
+  return (Array.isArray(data) ? data : []).filter(pr => pr && pr.created_at && Date.parse(pr.created_at) >= since).map(pr => {
+    const f = parsePrBody(pr.body);
+    return { pr, f };
+  }).filter(({ pr, f }) => {
+    if (/^(fix|update|chore|bump|refactor|revert|remove|track|improve)/i.test(pr.title || '')) return false;
+    if (f.category && derivCats.includes(f.category.toLowerCase())) return true;
+    return hasKeyword([pr.title, f.category, f.description, f.name].join(' \n '), cfg.coreKeywords);
+  }).map(({ pr, f }) => {
+    let name = f.name || '';
+    if (!name) {
+      const m = (pr.title || '').match(/^(?:feat:?\s*)?(?:add(?:ed|ing)?|new|list)\s+(?:adapter\s+(?:for\s+)?)?(.+?)(?:\s+(?:adapter|tvl|perps?|dex|protocol))*\s*$/i);
+      name = m ? m[1] : (pr.title || '').replace(/adapter|tvl/ig, '').trim();
+    }
+    const date = Date.parse(pr.created_at);
+    return {
+      name,
+      chain: f.chain ? f.chain.split(/[,/]/).map(s => s.trim()).filter(Boolean) : [],
+      stage: 'mainnet',
+      url: cleanUrl(f.url),
+      twitter: normalizeTwitter(f.twitter),
+      source: 'github',
+      sourceUrl: pr.html_url,
+      detectedAt: date,
+      descJa: `DefiLlama-Adaptersに掲載申請（PR #${pr.number}、${fmtDate(date).slice(0, 10)}${pr.state === 'closed' ? (pr.merged_at ? '、マージ済み' : '、クローズ') : '、審査中'}）` + (f.category ? ` ／ 申請カテゴリ: ${f.category}` : ''),
+      original: f.description ? { title: f.description, link: pr.html_url } : null,
+    };
+  });
+}
+
+function parseHyperliquid(data, network) {
+  return (Array.isArray(data) ? data : []).filter(d => d && d.name).map(d => ({
+    name: d.fullName || d.name,
+    chain: ['Hyperliquid'],
+    stage: network === 'testnet' ? 'testnet' : 'mainnet',
+    url: '',
+    twitter: '',
+    source: 'hyperliquid',
+    sourceUrl: network === 'testnet' ? 'https://app.hyperliquid-testnet.xyz/' : 'https://app.hyperliquid.xyz/',
+    detectedAt: null, // APIに日時がないため、前回との差分で判断する
+    descJa: `Hyperliquid${network === 'testnet' ? 'テストネット' : ''}のHIP-3でperp DEX「${d.name}」${d.fullName && d.fullName !== d.name ? `（${d.fullName}）` : ''}がデプロイされている` + (d.deployer ? `（デプロイ元 ${String(d.deployer).slice(0, 6)}…${String(d.deployer).slice(-4)}）` : ''),
+    hlName: d.name,
+  }));
+}
+
+function parseRssItems(items, feedUrl, cfg, now) {
+  const since = now - cfg.lookbackDays * 864e5;
+  const site = hostOf(feedUrl);
+  return items.filter(it => it.title && hasKeyword(it.title + ' ' + (it.description || ''), cfg.coreKeywords))
+    .map(it => ({ ...it, date: it.pubDate ? Date.parse(it.pubDate.replace(/^(\d{4}-\d\d-\d\d) /, '$1T')) : null }))
+    .filter(it => !it.date || isNaN(it.date) || it.date >= since)
+    .map(it => {
+      const text = it.title + ' ' + (it.description || '');
+      const extracted = extractNameFromHeadline(it.title);
+      const topics = detectTopicsJa(text);
+      const date = it.date && !isNaN(it.date) ? it.date : null;
+      return {
+        name: extracted || it.title,
+        headline: !extracted,
+        chain: detectChains(it.title),
+        stage: detectStage(it.title),
+        url: '',
+        twitter: '',
+        source: 'news',
+        sourceUrl: it.link,
+        detectedAt: date,
+        descJa: `${site}の記事${date ? `（${fmtDate(date).slice(0, 10)}）` : ''}` + (topics.length ? `：話題 ${topics.join('・')}` : ''),
+        original: { title: it.title, link: it.link },
+      };
+    });
+}
+
+// ---- 同じ案件をまとめる ----
+function itemKeys(it) {
+  const keys = [];
+  if (!it.headline) { const n = normalizeName(it.name); if (n) keys.push('n:' + n); }
+  else keys.push('h:' + normalizeName(it.name));
+  const t = normalizeTwitter(it.twitter); if (t) keys.push('x:' + t);
+  const d = baseDomain(it.url); if (d) keys.push('d:' + d);
+  return keys;
+}
+
+function mergeItems(rawItems, index) {
+  const parent = rawItems.map((_, i) => i);
+  const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+  const owner = {};
+  rawItems.forEach((it, i) => {
+    for (const k of itemKeys(it)) {
+      if (owner[k] == null) owner[k] = i; else parent[find(i)] = find(owner[k]);
+    }
+  });
+  const groups = {};
+  rawItems.forEach((it, i) => { (groups[find(i)] = groups[find(i)] || []).push(it); });
+
+  // DefiLlama掲載済みかを照合する索引
+  const idx = {};
+  for (const p of index || []) {
+    for (const k of itemKeys({ name: p.name, twitter: p.twitter, url: p.url })) if (!idx[k]) idx[k] = p;
+  }
+
+  return Object.values(groups).map(group => {
+    const sorted = [...group].sort((a, b) => SOURCE_PRIORITY.indexOf(a.source) - SOURCE_PRIORITY.indexOf(b.source) || (a.headline ? 1 : 0) - (b.headline ? 1 : 0));
+    const pick = f => (sorted.find(x => x[f]) || {})[f] || '';
+    const m = {
+      name: pick('name'),
+      headline: sorted.every(x => x.headline),
+      url: pick('url'),
+      twitter: normalizeTwitter(pick('twitter')),
+      chains: [...new Set(group.flatMap(x => Array.isArray(x.chain) ? x.chain : (x.chain ? [x.chain] : [])))],
+      stage: group.reduce((s, x) => maxStage(s, x.stage || 'unknown'), 'unknown'),
+      sources: [],
+      descs: [],
+      originals: [],
+      listed: sorted.find(x => x.listed) ? sorted.find(x => x.listed).listed : null,
+      raises: group.filter(x => x.raise).map(x => x.raise),
+      date: Math.max(0, ...group.map(x => x.detectedAt || 0)) || null,
+    };
+    const seen = new Set();
+    for (const x of sorted) {
+      if (!seen.has(x.sourceUrl)) { seen.add(x.sourceUrl); m.sources.push({ source: x.source, sourceUrl: x.sourceUrl, date: x.detectedAt }); }
+      if (x.descJa && !m.descs.includes(x.descJa)) m.descs.push(x.descJa);
+      if (x.original && !m.originals.some(o => o.link === x.original.link)) m.originals.push(x.original);
+    }
+    // 掲載済みプロトコルと一致したら情報を補う
+    if (!m.listed) {
+      const hit = group.flatMap(itemKeys).map(k => idx[k]).find(Boolean);
+      if (hit) {
+        m.listed = { audits: hit.audits, tvl: hit.tvl };
+        if (!m.url) m.url = hit.url;
+        if (!m.twitter) m.twitter = hit.twitter;
+        if (m.headline) { m.name = hit.name; m.headline = false; }
+        m.chains = [...new Set([...m.chains, ...hit.chains])];
+        m.stage = 'mainnet';
+        if (hit.slug && !seen.has(`https://defillama.com/protocol/${hit.slug}`)) {
+          m.sources.push({ source: 'defillama', sourceUrl: `https://defillama.com/protocol/${hit.slug}`, date: hit.listedAt });
+        }
+        m.descs.push(`DefiLlamaに掲載済み（${hit.listedAt ? fmtDate(hit.listedAt).slice(0, 10) + '掲載、' : ''}TVL ${fmtUsd(hit.tvl)}、監査 ${hit.audits}件）`);
+      }
+    }
+    m.aliases = [...new Set([...group.flatMap(itemKeys), ...itemKeys({ name: m.name, twitter: m.twitter, url: m.url, headline: m.headline })])];
+    m.key = m.aliases.find(k => k.startsWith('n:')) || m.aliases[0];
+    m.sourceCount = new Set(m.sources.map(s => s.source + '|' + (s.source === 'news' ? hostOf(s.sourceUrl) : ''))).size;
+    return m;
+  });
+}
+
+// ---- 安全チェック ----
+function safetyChecks(m) {
+  const out = [];
+  const rel = (a, b) => a && b && a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a));
+  if (m.url && m.twitter) out.push({ ok: true, text: '公式サイトと公式Xが出典から確認できた' });
+  if (m.listed) out.push({ ok: true, text: `DefiLlamaに掲載済み（監査 ${m.listed.audits}件）` });
+  if (m.raises && m.raises.length) out.push({ ok: true, text: '資金調達の記録がある' });
+  if (m.sourceCount <= 1) out.push({ ok: false, text: '出典が1つしかない' });
+  if (!m.url || !m.twitter) out.push({ ok: false, text: '公式リンクがない' + (!m.url && !m.twitter ? '' : !m.url ? '（サイト）' : '（X）') });
+  if (m.url && m.twitter) {
+    const dom = (baseDomain(m.url) || hostOf(m.url)).split('.')[0].replace(/[^a-z0-9]/g, '');
+    const handle = m.twitter.replace(/_?(xyz|fi|dex|protocol|app|io|labs|exchange|official|hq|trade|finance|network|perps?)$/i, '').replace(/[^a-z0-9]/g, '');
+    const name = normalizeName(m.name);
+    if (!(rel(dom, handle) || (rel(dom, name) && rel(handle, name)))) out.push({ ok: false, text: `ドメイン（${hostOf(m.url)}）と公式X（@${m.twitter}）の名前が食い違う` });
+  }
+  return out;
+}
+
+// ---- 新着・続報・既知の判定 ----
+// state: { lastCheck, known: { key: { name, stage, firstSeen, aliases } }, hidden: { key: name } }
+function classify(merged, state, now, cfg) {
+  const known = { ...(state.known || {}) };
+  const hidden = state.hidden || {};
+  const aliasIndex = {};
+  for (const [k, v] of Object.entries(known)) for (const a of [k, ...(v.aliases || [])]) aliasIndex[a] = k;
+  const firstRun = !state.lastCheck;
+  const out = [];
+  for (const m of merged) {
+    if (isExcluded(m, cfg)) continue;
+    const knownKey = m.aliases.map(a => aliasIndex[a]).find(Boolean);
+    const hiddenHit = m.aliases.some(a => hidden[a]) || (knownKey && hidden[knownKey]);
+    if (hiddenHit) continue;
+    let status;
+    const prev = knownKey ? known[knownKey] : null;
+    if (!prev) {
+      status = (firstRun && !(m.date && now - m.date <= cfg.firstRunDays * 864e5)) ? 'known' : 'new';
+    } else if (stageRank(m.stage) > stageRank(prev.stage)) {
+      status = 'update';
+    } else {
+      status = 'known';
+    }
+    const key = knownKey || m.key;
+    const firstSeen = prev ? prev.firstSeen : now;
+    known[key] = {
+      name: m.headline && prev ? prev.name : m.name,
+      stage: prev ? maxStage(prev.stage, m.stage) : m.stage,
+      firstSeen,
+      lastSeen: now,
+      aliases: [...new Set([...(prev ? prev.aliases || [] : []), ...m.aliases])].slice(0, 20),
+    };
+    out.push({ ...m, key, status, prevStage: prev ? prev.stage : null, firstSeen });
+  }
+  const rank = { new: 0, update: 1, known: 2 };
+  out.sort((a, b) => rank[a.status] - rank[b.status] || b.sourceCount - a.sourceCount || b.firstSeen - a.firstSeen || (b.date || 0) - (a.date || 0));
+  return { items: out, state: { ...state, known, lastCheck: now } };
+}
+// ==CORE END==
+
+// ===================== ここからブラウザ用 =====================
+const LS_KEY = 'perpDexScout.v1';
+function loadStore() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY)) || {}; } catch (e) { return {}; }
+}
+function saveStore(s) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch (e) { console.warn('保存できませんでした', e); }
+}
+let store = loadStore();
+store.known = store.known || {};
+store.hidden = store.hidden || {};
+store.starred = store.starred || {};
+
+function getConfig() { return { ...DEFAULT_CONFIG, ...(store.config || {}) }; }
+
+async function fetchWithTimeout(url, opts, ms) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('時間切れ');
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
+function parseXmlFeed(xmlText) {
+  const doc = new DOMParser().parseFromString(xmlText, 'text/xml');
+  if (doc.querySelector('parsererror')) throw new Error('RSSを読めません');
+  const txt = (el, sel) => { const n = el.querySelector(sel); return n ? n.textContent.trim() : ''; };
+  const nodes = [...doc.querySelectorAll('item'), ...doc.querySelectorAll('entry')];
+  return nodes.map(n => ({
+    title: txt(n, 'title'),
+    link: txt(n, 'link') || (n.querySelector('link') && n.querySelector('link').getAttribute('href')) || '',
+    pubDate: txt(n, 'pubDate') || txt(n, 'published') || txt(n, 'updated'),
+    description: txt(n, 'description').replace(/<[^>]+>/g, ' ').slice(0, 500),
+  }));
+}
+
+async function fetchFeed(feedUrl, cfg) {
+  let lastErr;
+  for (const p of cfg.rssProxies) {
+    try {
+      if (p.startsWith('rss2json:')) {
+        const res = await fetchWithTimeout(p.slice(9) + encodeURIComponent(feedUrl), {}, cfg.timeoutMs);
+        const j = await res.json();
+        if (j.status !== 'ok') throw new Error(j.message || 'rss2json失敗');
+        return j.items.map(i => ({ title: i.title, link: i.link, pubDate: i.pubDate, description: (i.description || '').replace(/<[^>]+>/g, ' ').slice(0, 500) }));
+      }
+      const res = await fetchWithTimeout(p + encodeURIComponent(feedUrl), {}, cfg.timeoutMs);
+      return parseXmlFeed(await res.text());
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('取得失敗');
+}
+
+const SOURCES = [
+  { id: 'defillama', label: 'DefiLlama プロトコル一覧', run: async (cfg, now) => {
+    const res = await fetchWithTimeout('https://api.llama.fi/protocols', {}, cfg.timeoutMs);
+    return parseDefiLlamaProtocols(await res.json(), cfg, now);
+  } },
+  { id: 'raises', label: 'DefiLlama 資金調達', run: async (cfg, now) => {
+    const res = await fetchWithTimeout('https://api.llama.fi/raises', {}, cfg.timeoutMs);
+    return { items: parseRaises(await res.json(), cfg, now) };
+  } },
+  { id: 'github', label: 'DefiLlama-Adapters (GitHub)', run: async (cfg, now) => {
+    const res = await fetchWithTimeout('https://api.github.com/repos/DefiLlama/DefiLlama-Adapters/pulls?state=all&sort=created&direction=desc&per_page=100', { headers: { Accept: 'application/vnd.github+json' } }, cfg.timeoutMs);
+    return { items: parseGithubPulls(await res.json(), cfg, now) };
+  } },
+  { id: 'hyperliquid', label: 'Hyperliquid HIP-3', run: async (cfg) => {
+    const call = async (base, net) => {
+      const res = await fetchWithTimeout(base + '/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'perpDexs' }) }, cfg.timeoutMs);
+      return parseHyperliquid(await res.json(), net);
+    };
+    const items = await call('https://api.hyperliquid.xyz', 'mainnet');
+    if (cfg.hyperliquidTestnet) {
+      try { items.push(...await call('https://api.hyperliquid-testnet.xyz', 'testnet')); } catch (e) { /* テストネットは任意 */ }
+    }
+    return { items };
+  } },
+  { id: 'news', label: 'ニュース（RSS）', run: async (cfg, now) => {
+    const results = await Promise.allSettled(cfg.rssFeeds.map(f => fetchFeed(f, cfg).then(items => parseRssItems(items, f, cfg, now))));
+    const items = results.filter(r => r.status === 'fulfilled').flatMap(r => r.value);
+    const failed = cfg.rssFeeds.filter((f, i) => results[i].status === 'rejected').map(hostOf);
+    if (failed.length === cfg.rssFeeds.length && cfg.rssFeeds.length) throw new Error('すべてのRSSが取得できません');
+    return { items, partialFail: failed };
+  } },
+];
+
+let current = { items: [], failures: [], prevCheck: null, checkedAt: null };
+let activeTab = 'new';
+let busy = false;
+
+async function runCheck(force) {
+  if (busy) return;
+  busy = true;
+  const btn = document.getElementById('recheck');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> チェック中';
+  const cfg = getConfig();
+  const now = Date.now();
+  let raw;
+  const cache = store.cache;
+  if (!force && cache && now - cache.ts < cfg.cacheMinutes * 60e3 && cache.configSig === JSON.stringify(cfg)) {
+    raw = cache.raw;
+    setStatus(`${cfg.cacheMinutes}分以内の取得結果を使用（${fmtShort(cache.ts)}取得）`);
+  } else {
+    setStatus('情報源を調べています…');
+    const settled = await Promise.allSettled(SOURCES.map(s => s.run(cfg, now)));
+    raw = {};
+    SOURCES.forEach((s, i) => {
+      const r = settled[i];
+      raw[s.id] = r.status === 'fulfilled'
+        ? { ok: true, items: r.value.items, index: r.value.index, partialFail: r.value.partialFail }
+        : { ok: false, error: String(r.reason && r.reason.message || r.reason) };
+    });
+    store.cache = { ts: now, raw, configSig: JSON.stringify(cfg) };
+    setStatus(`${fmtShort(now)} に取得`);
+  }
+  const all = Object.values(raw).filter(r => r.ok).flatMap(r => r.items || []);
+  const index = raw.defillama && raw.defillama.ok ? raw.defillama.index : [];
+  const merged = mergeItems(all, index);
+  const prevCheck = store.lastCheck || null;
+  const result = classify(merged, { lastCheck: store.lastCheck, known: store.known, hidden: store.hidden }, now, cfg);
+  store.known = result.state.known;
+  store.lastCheck = now;
+  // 注目中の案件は最新の情報で上書き保存
+  for (const it of result.items) if (store.starred[it.key]) store.starred[it.key] = { ...it, status: 'known' };
+  saveStore(store);
+
+  const failures = [];
+  SOURCES.forEach(s => {
+    const r = raw[s.id];
+    if (!r || !r.ok) failures.push(`${s.label}（${r ? r.error : '未取得'}）`);
+    else if (r.partialFail && r.partialFail.length) failures.push(`ニュース一部: ${r.partialFail.join(', ')}`);
+  });
+  current = { items: result.items, failures, prevCheck, checkedAt: now };
+  busy = false;
+  btn.disabled = false;
+  btn.textContent = '再チェック';
+  render();
+}
+
+function setStatus(t) { document.getElementById('status').textContent = t; }
+
+function el(tag, attrs, ...children) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === 'class') e.className = v;
+    else if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
+    else if (v != null && v !== false) e.setAttribute(k, v);
+  }
+  for (const c of children.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
+  return e;
+}
+
+function safeLink(href, label) {
+  if (!/^https?:\/\//i.test(href || '')) return null;
+  return el('a', { href, target: '_blank', rel: 'noopener noreferrer nofollow' }, label);
+}
+
+function renderCard(it) {
+  const head = el('div', { class: 'card-head' },
+    el('h2', {}, it.headline ? '（記事）' : '', it.name),
+    it.status === 'new' ? el('span', { class: 'badge solid st-new' }, '新着') : null,
+    it.status === 'update' ? el('span', { class: 'badge solid st-update' }, `続報：${STAGE_JA[it.prevStage] || ''}→${STAGE_JA[it.stage]}`) : null,
+    el('span', { class: `badge stage-${it.stage}` }, STAGE_JA[it.stage]),
+    ...(it.chains || []).slice(0, 5).map(c => el('span', { class: 'badge stage-unknown' }, c)),
+  );
+  const meta = el('div', { class: 'meta' },
+    `初検知 ${fmtDate(it.firstSeen)}`, it.date ? ` ／ 出典の日付 ${fmtDate(it.date)}` : '', ` ／ 出典 ${it.sourceCount}種類`);
+  const desc = el('ul', { class: 'desc' },
+    ...(it.descs || []).map(d => el('li', {}, d)),
+    ...(it.originals || []).map(o => el('li', { class: 'orig' }, '原文: ', safeLink(o.link, o.title) || o.title,
+      /^https?:/.test(o.link || '') && !/github\.com/.test(o.link) ? [' ', safeLink('https://translate.google.com/translate?sl=auto&tl=ja&u=' + encodeURIComponent(o.link), '[日本語で読む]')] : null)));
+  const links = el('div', { class: 'links' },
+    it.url ? el('div', {}, '公式サイト: ', el('span', { class: 'dom' }, hostOf(it.url)), ' ', safeLink(it.url, '↗')) : null,
+    it.twitter ? el('div', {}, '公式X: ', el('span', { class: 'dom' }, '@' + it.twitter), ' ', safeLink('https://x.com/' + it.twitter, '↗')) : null,
+    el('div', {}, '出典: ', ...it.sources.flatMap((s, i) => [i ? ' ／ ' : '', safeLink(s.sourceUrl, `${SOURCE_JA[s.source]}（${hostOf(s.sourceUrl)}）`)])),
+  );
+  const checks = el('div', { class: 'checks' }, ...safetyChecks(it).map(c => el('div', { class: c.ok ? 'ok' : 'warn' }, (c.ok ? '✅ ' : '⚠️ ') + c.text)));
+  const starred = !!store.starred[it.key];
+  const actions = el('div', { class: 'actions' },
+    el('button', { class: 'btn' + (starred ? ' on' : ''), onclick: () => toggleStar(it) }, starred ? '★ 注目中' : '☆ 注目'),
+    el('button', { class: 'btn', onclick: () => hideItem(it) }, '興味なし（以後非表示）'),
+  );
+  return el('article', { class: 'card' }, head, meta, desc, links, checks, actions);
+}
+
+function toggleStar(it) {
+  if (store.starred[it.key]) delete store.starred[it.key];
+  else store.starred[it.key] = { ...it };
+  saveStore(store);
+  render();
+}
+function hideItem(it) {
+  store.hidden[it.key] = it.name;
+  delete store.starred[it.key];
+  saveStore(store);
+  current.items = current.items.filter(x => x.key !== it.key);
+  render();
+}
+
+function render() {
+  const { items, failures, prevCheck } = current;
+  const fresh = items.filter(i => i.status !== 'known');
+  const newCount = items.filter(i => i.status === 'new').length;
+  const updCount = items.filter(i => i.status === 'update').length;
+  document.getElementById('summary').innerHTML = '';
+  document.getElementById('summary').append(
+    prevCheck ? `前回（${fmtShort(prevCheck)}）以降の新着 ${newCount}件` : `初回チェック：直近${getConfig().firstRunDays}日の新着 ${newCount}件`,
+    updCount ? `・続報 ${updCount}件` : '',
+    el('small', {}, `表示中の案件 ${items.length}件（新着/続報 ${fresh.length}・既知 ${items.length - fresh.length}・注目 ${Object.keys(store.starred).length}）`),
+  );
+  const tabs = document.querySelectorAll('.tab');
+  const counts = { new: fresh.length, known: items.length - fresh.length, starred: Object.keys(store.starred).length };
+  const names = { new: '新着', known: '既知', starred: '注目' };
+  tabs.forEach(t => { t.classList.toggle('active', t.dataset.tab === activeTab); t.textContent = `${names[t.dataset.tab]} (${counts[t.dataset.tab]})`; });
+
+  let list;
+  if (activeTab === 'new') list = fresh;
+  else if (activeTab === 'known') list = items.filter(i => i.status === 'known');
+  else {
+    const byKey = Object.fromEntries(items.map(i => [i.key, i]));
+    list = Object.entries(store.starred).map(([k, v]) => byKey[k] || v);
+  }
+  const main = document.getElementById('list');
+  main.innerHTML = '';
+  if (!list.length) {
+    main.append(el('div', { class: 'empty' }, activeTab === 'new' ? '新着はありません' : activeTab === 'starred' ? '「☆ 注目」を押した案件がここに並びます' : '既知の案件はありません'));
+  } else {
+    main.append(...list.map(renderCard));
+  }
+  const f = document.getElementById('failed');
+  f.innerHTML = '';
+  if (failures.length) f.append(el('div', { class: 'fail' }, '取得できなかった情報源: ' + failures.join(' ／ ')));
+}
+
+// ---- 設定画面 ----
+const LIST_FIELDS = ['coreKeywords', 'signalKeywords', 'rssFeeds', 'exclude', 'defillamaCategories'];
+function openSettings() {
+  const cfg = getConfig();
+  for (const f of LIST_FIELDS) document.getElementById('cfg-' + f).value = cfg[f].join('\n');
+  document.getElementById('cfg-lookbackDays').value = cfg.lookbackDays;
+  document.getElementById('cfg-hidden').value = Object.entries(store.hidden).map(([k, v]) => `${v}\t${k}`).join('\n');
+  document.getElementById('settings').showModal();
+}
+function saveSettings() {
+  const cfg = {};
+  for (const f of LIST_FIELDS) cfg[f] = document.getElementById('cfg-' + f).value.split('\n').map(s => s.trim()).filter(Boolean);
+  cfg.lookbackDays = Math.max(1, Math.min(365, Number(document.getElementById('cfg-lookbackDays').value) || DEFAULT_CONFIG.lookbackDays));
+  store.config = cfg;
+  const hidden = {};
+  for (const line of document.getElementById('cfg-hidden').value.split('\n')) {
+    const [name, key] = line.split('\t');
+    if (key && key.trim()) hidden[key.trim()] = (name || '').trim();
+  }
+  store.hidden = hidden;
+  saveStore(store);
+  document.getElementById('settings').close();
+  runCheck(true);
+}
+
+document.getElementById('recheck').addEventListener('click', () => runCheck(true));
+document.getElementById('openSettings').addEventListener('click', openSettings);
+document.getElementById('closeSettings').addEventListener('click', () => document.getElementById('settings').close());
+document.getElementById('saveSettings').addEventListener('click', saveSettings);
+document.getElementById('resetSettings').addEventListener('click', () => {
+  delete store.config; saveStore(store); openSettings();
+});
+document.getElementById('resetAll').addEventListener('click', () => {
+  if (!confirm('前回チェック日時・既知リスト・注目・興味なし・設定をすべて消します。よろしいですか？')) return;
+  store = { known: {}, hidden: {}, starred: {} };
+  saveStore(store);
+  document.getElementById('settings').close();
+  runCheck(true);
+});
+document.getElementById('tabs').addEventListener('click', e => {
+  const t = e.target.closest('.tab'); if (!t) return;
+  activeTab = t.dataset.tab; render();
+});
+
+runCheck(false);
+</script>
+</body>
+</html>
