@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perp DEX 乖離モニター</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel2: #1e232b;
+    --line: #2a313b;
+    --text: #e6e9ee;
+    --muted: #8b95a3;
+    --accent: #5aa9ff;
+    --green: #3ecf8e;
+    --red: #ff6b6b;
+    --yellow: #f5c451;
+    --hit: rgba(245, 196, 81, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+    padding-bottom: 64px;
+  }
+  header { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  h1 { font-size: 17px; margin: 0 0 6px; }
+  .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+  .meta b { color: var(--text); font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .chip {
+    font-size: 12px; padding: 2px 10px; border-radius: 999px; border: 1px solid var(--line);
+    background: var(--panel2); cursor: default; white-space: nowrap;
+  }
+  .chip.ok { border-color: var(--green); color: var(--green); }
+  .chip.ng { border-color: var(--red); color: var(--red); }
+  .chip.off { color: var(--muted); }
+  .warn-banner { margin-top: 8px; color: var(--red); font-size: 12px; }
+  main { padding: 12px 16px; max-width: 1280px; margin: 0 auto; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+  .tab {
+    background: none; border: 0; color: var(--muted); padding: 8px 14px; font: inherit; cursor: pointer;
+    border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+  .tab .count { font-size: 11px; color: var(--muted); margin-left: 4px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 10px; }
+  .controls input[type=search] {
+    background: var(--panel2); border: 1px solid var(--line); color: var(--text); border-radius: 6px;
+    padding: 6px 10px; font: inherit; width: 180px;
+  }
+  .controls label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; background: var(--panel2); position: sticky; top: 0; }
+  th:first-child, td:first-child { text-align: left; }
+  td.l { text-align: left; }
+  tbody tr.row { cursor: pointer; }
+  tbody tr.row:hover { background: var(--panel2); }
+  tr.hit { background: var(--hit); }
+  tr.hit td:first-child { box-shadow: inset 3px 0 0 var(--yellow); }
+  .sym { font-weight: 600; }
+  .sus { color: var(--yellow); margin-left: 4px; }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .muted { color: var(--muted); }
+  tr.detail > td { background: var(--bg); padding: 8px 10px 12px 28px; }
+  tr.detail table { min-width: 0; width: auto; }
+  tr.detail th { position: static; background: none; }
+  tr.detail td, tr.detail th { border-bottom: 1px dashed var(--line); padding: 4px 12px; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  section.alerts { margin-top: 20px; }
+  section.alerts h2 { font-size: 15px; margin: 0 0 8px; }
+  .alert-list { list-style: none; padding: 0; margin: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); max-height: 420px; overflow-y: auto; }
+  .alert-list li { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+  .alert-list li:last-child { border-bottom: 0; }
+  .alert-list time { color: var(--muted); font-size: 12px; }
+  .alert-list pre { margin: 2px 0 0; white-space: pre-wrap; font: inherit; }
+  .alert-list .err { color: var(--red); font-size: 12px; }
+  .disclaimer {
+    position: fixed; right: 12px; bottom: 12px; left: 12px; margin-left: auto; max-width: 460px;
+    background: rgba(23, 27, 33, 0.95); border: 1px solid var(--yellow); color: var(--yellow);
+    padding: 8px 12px; border-radius: 8px; font-size: 12px; z-index: 10;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Perp DEX 乖離モニター</h1>
+  <div class="meta">
+    <span>最終更新: <b id="updated">—</b></span>
+    <span id="thresholds">しきい値: —</span>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="warn-banner" id="banner" hidden></div>
+</header>
+
+<main>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="fr" role="tab">FR乖離<span class="count" id="count-fr"></span></button>
+    <button class="tab" data-tab="price" role="tab">価格乖離<span class="count" id="count-price"></span></button>
+  </div>
+
+  <div class="controls">
+    <input type="search" id="q" placeholder="銘柄を検索 (例: ETH)" autocomplete="off">
+    <label><input type="checkbox" id="volFilter" checked> 出来高フィルタ</label>
+    <label><input type="checkbox" id="hitOnly"> しきい値超えのみ</label>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"><tr><td class="empty" colspan="8">読み込み中…</td></tr></tbody>
+    </table>
+  </div>
+
+  <section class="alerts">
+    <h2>アラート履歴 <span class="muted" style="font-size:12px;font-weight:400">（直近50件・サーバー起動中のみ保持）</span></h2>
+    <ul class="alert-list" id="alerts"><li class="muted">まだありません</li></ul>
+  </section>
+</main>
+
+<div class="disclaimer">⚠ FR差は手数料・スリッページ・価格差・FR変動を差し引く前の値です</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var state = {
+    tab: 'fr',
+    q: '',
+    volFilter: true,
+    hitOnly: false,
+    expanded: {},
+    snap: null,
+  };
+
+  // 表示設定はブラウザに保存（失敗しても動く）
+  try {
+    var saved = JSON.parse(localStorage.getItem('psm-ui') || '{}');
+    if (saved.tab === 'fr' || saved.tab === 'price') state.tab = saved.tab;
+    if (typeof saved.volFilter === 'boolean') state.volFilter = saved.volFilter;
+    if (typeof saved.hitOnly === 'boolean') state.hitOnly = saved.hitOnly;
+  } catch (e) {}
+  function saveUi() {
+    try {
+      localStorage.setItem('psm-ui', JSON.stringify({ tab: state.tab, volFilter: state.volFilter, hitOnly: state.hitOnly }));
+    } catch (e) {}
+  }
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function isNum(x) { return typeof x === 'number' && isFinite(x); }
+  function pct(x, d) { return isNum(x) ? x.toFixed(d) + '%' : '—'; }
+  function signedPct(x, d) {
+    if (!isNum(x)) return '<span class="muted">—</span>';
+    var cls = x > 0 ? 'pos' : x < 0 ? 'neg' : '';
+    return '<span class="' + cls + '">' + x.toFixed(d) + '%</span>';
+  }
+  function vol(x) {
+    if (!isNum(x)) return '<span class="muted">—</span>';
+    if (x >= 1e9) return '$' + (x / 1e9).toFixed(2) + 'B';
+    if (x >= 1e6) return '$' + (x / 1e6).toFixed(1) + 'M';
+    if (x >= 1e3) return '$' + (x / 1e3).toFixed(0) + 'K';
+    return '$' + x.toFixed(0);
+  }
+  function price(x) {
+    if (!isNum(x)) return '—';
+    var d = x >= 1000 ? 2 : x >= 1 ? 4 : x >= 0.01 ? 6 : 8;
+    return x.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
+  function label(dex) {
+    var l = state.snap && state.snap.labels;
+    return esc((l && l[dex]) || dex || '—');
+  }
+
+  function renderHeader(s) {
+    $('updated').textContent = s.updatedAt ? new Date(s.updatedAt).toLocaleString('ja-JP') : '取得中…';
+    var a = s.alertConfig || {};
+    var th = 'しきい値: FR差年率 ≥ <b>' + esc(a.frSpreadAprPct) + '%</b> / 価格差 ≥ <b>' + esc(a.priceSpreadPct) +
+      '%</b> / 出来高(小) ≥ <b>' + vol(a.minVolume24hUsd) + '</b> / 再通知まで <b>' + esc(a.cooldownMinutes) + '分</b>' +
+      ' / 更新間隔 <b>' + esc(s.pollSeconds) + '秒</b>';
+    if (s.watchlist && s.watchlist.length) th += ' / 監視銘柄: <b>' + esc(s.watchlist.join(', ')) + '</b>';
+    $('thresholds').innerHTML = th;
+
+    var chips = Object.keys(s.exchanges || {}).map(function (id) {
+      var e = s.exchanges[id];
+      if (!e.enabled) return '<span class="chip off" title="config.json で無効">' + esc(e.label) + ' 無効</span>';
+      if (e.ok) return '<span class="chip ok" title="取得OK (' + esc(e.ms) + 'ms)">● ' + esc(e.label) + ' ' + e.count + '銘柄</span>';
+      return '<span class="chip ng" title="' + esc(e.error) + '">● ' + esc(e.label) + ' エラー</span>';
+    });
+    $('chips').innerHTML = chips.join('') || '<span class="chip off">取得待ち</span>';
+
+    var banner = $('banner');
+    if (s.configError) {
+      banner.hidden = false;
+      banner.textContent = s.configError + '（直前の正常な設定で動作中）';
+    } else {
+      banner.hidden = true;
+    }
+  }
+
+  function isHit(r) {
+    return state.tab === 'fr' ? !!(r.alert && r.alert.fr) : !!(r.alert && r.alert.price);
+  }
+
+  function filtered(s) {
+    var q = state.q.trim().toUpperCase();
+    var minVol = (s.alertConfig && s.alertConfig.minVolume24hUsd) || 0;
+    var list = (s.results || []).filter(function (r) {
+      if (state.tab === 'fr' && !r.fr) return false;
+      if (state.tab === 'price' && !r.price) return false;
+      if (q && r.symbol.indexOf(q) === -1) return false;
+      if (state.volFilter && minVol > 0 && !(isNum(r.minVolume24h) && r.minVolume24h >= minVol)) return false;
+      if (state.hitOnly && !isHit(r)) return false;
+      return true;
+    });
+    if (state.tab === 'price') {
+      list.sort(function (a, b) { return b.price.pct - a.price.pct; });
+    }
+    return list;
+  }
+
+  var HEAD = {
+    fr: ['銘柄', 'FR差年率', 'FR差1h', 'ショート先', 'ロング先', '価格差', '出来高(小)', 'DEX数'],
+    price: ['銘柄', '価格差', '高いDEX', '安いDEX', 'FR差年率', '出来高(小)', 'DEX数'],
+  };
+
+  function symCell(r) {
+    return '<td><span class="sym">' + esc(r.symbol) + '</span>' +
+      (r.suspicious ? '<span class="sus" title="価格が大きくずれています。単位違いか別銘柄の可能性があるためアラート対象外">⚠</span>' : '') +
+      '</td>';
+  }
+
+  function rowHtml(r) {
+    var cells;
+    if (state.tab === 'fr') {
+      cells = symCell(r) +
+        '<td>' + pct(r.fr.aprPct, 1) + '</td>' +
+        '<td>' + pct(r.fr.hourlyPct, 4) + '</td>' +
+        '<td class="l">' + label(r.fr.shortOn) + '</td>' +
+        '<td class="l">' + label(r.fr.longOn) + '</td>' +
+        '<td>' + (r.price ? pct(r.price.pct, 3) : '—') + '</td>' +
+        '<td>' + vol(r.minVolume24h) + '</td>' +
+        '<td>' + r.dexCount + '</td>';
+    } else {
+      cells = symCell(r) +
+        '<td>' + pct(r.price.pct, 3) + '</td>' +
+        '<td class="l">' + label(r.price.highOn) + '</td>' +
+        '<td class="l">' + label(r.price.lowOn) + '</td>' +
+        '<td>' + (r.fr ? pct(r.fr.aprPct, 1) : '—') + '</td>' +
+        '<td>' + vol(r.minVolume24h) + '</td>' +
+        '<td>' + r.dexCount + '</td>';
+    }
+    var html = '<tr class="row' + (isHit(r) ? ' hit' : '') + '" data-sym="' + esc(r.symbol) + '">' + cells + '</tr>';
+    if (state.expanded[r.symbol]) html += detailHtml(r);
+    return html;
+  }
+
+  function detailHtml(r) {
+    var colspan = HEAD[state.tab].length;
+    var entries = r.entries.slice().sort(function (a, b) {
+      return (isNum(b.fundingHourly) ? b.fundingHourly : -Infinity) - (isNum(a.fundingHourly) ? a.fundingHourly : -Infinity);
+    });
+    var rows = entries.map(function (e) {
+      var h = isNum(e.fundingHourly) ? e.fundingHourly * 100 : null;
+      var apr = isNum(e.fundingHourly) ? e.fundingHourly * 24 * 365 * 100 : null;
+      var rawFr = isNum(e.fundingRaw) ? (e.fundingRaw * 100).toFixed(4) + '% / ' + e.intervalHours + 'h' : '—';
+      return '<tr><td class="l">' + label(e.dex) + '</td><td class="l">' + esc(e.raw) + '</td>' +
+        '<td>' + price(e.price) + '</td>' +
+        '<td>' + signedPct(h, 5) + '</td><td>' + signedPct(apr, 1) + '</td>' +
+        '<td class="muted">' + rawFr + '</td>' +
+        '<td>' + vol(e.volume24h) + '</td></tr>';
+    }).join('');
+    return '<tr class="detail"><td colspan="' + colspan + '"><table><thead><tr>' +
+      '<th>DEX</th><th>元の銘柄名</th><th>価格</th><th>FR(1h)</th><th>FR(年率)</th><th>DEX表示のFR / 間隔</th><th>出来高24h</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></td></tr>';
+  }
+
+  function renderTable() {
+    var s = state.snap;
+    document.querySelectorAll('.tab').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.tab === state.tab);
+    });
+    $('thead').innerHTML = '<tr>' + HEAD[state.tab].map(function (h) { return '<th>' + h + '</th>'; }).join('') + '</tr>';
+    if (!s) return;
+    var all = s.results || [];
+    $('count-fr').textContent = '(' + all.filter(function (r) { return r.alert && r.alert.fr; }).length + ')';
+    $('count-price').textContent = '(' + all.filter(function (r) { return r.alert && r.alert.price; }).length + ')';
+    var list = filtered(s);
+    if (!list.length) {
+      var msg = s.updatedAt ? '該当する銘柄がありません' : 'データ取得中…';
+      $('tbody').innerHTML = '<tr><td class="empty" colspan="' + HEAD[state.tab].length + '">' + msg + '</td></tr>';
+      return;
+    }
+    $('tbody').innerHTML = list.map(rowHtml).join('');
+  }
+
+  function renderAlerts() {
+    var a = (state.snap && state.snap.alerts) || [];
+    if (!a.length) {
+      $('alerts').innerHTML = '<li class="muted">まだありません</li>';
+      return;
+    }
+    $('alerts').innerHTML = a.map(function (x) {
+      return '<li><time>' + esc(new Date(x.at).toLocaleString('ja-JP')) + '</time><pre>' + esc(x.text) + '</pre>' +
+        (x.notifyErrors && x.notifyErrors.length ? '<div class="err">通知失敗: ' + esc(x.notifyErrors.join(' / ')) + '</div>' : '') +
+        '</li>';
+    }).join('');
+  }
+
+  function render() {
+    if (state.snap) {
+      renderHeader(state.snap);
+      renderAlerts();
+    }
+    renderTable();
+  }
+
+  function load() {
+    fetch('/api/snapshot', { cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (s) { state.snap = s; render(); })
+      .catch(function (e) {
+        var banner = $('banner');
+        banner.hidden = false;
+        banner.textContent = 'サーバーに接続できません（' + e.message + '）。node server.js が動いているか確認してください。';
+      });
+  }
+
+  // イベント
+  document.querySelectorAll('.tab').forEach(function (b) {
+    b.addEventListener('click', function () { state.tab = b.dataset.tab; saveUi(); renderTable(); });
+  });
+  $('q').addEventListener('input', function (e) { state.q = e.target.value; renderTable(); });
+  $('volFilter').checked = state.volFilter;
+  $('hitOnly').checked = state.hitOnly;
+  $('volFilter').addEventListener('change', function (e) { state.volFilter = e.target.checked; saveUi(); renderTable(); });
+  $('hitOnly').addEventListener('change', function (e) { state.hitOnly = e.target.checked; saveUi(); renderTable(); });
+  $('tbody').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr.row');
+    if (!tr) return;
+    var sym = tr.dataset.sym;
+    if (state.expanded[sym]) delete state.expanded[sym]; else state.expanded[sym] = true;
+    renderTable();
+  });
+
+  render();
+  load();
+  setInterval(load, 10000);
+})();
+</script>
+</body>
+</html>

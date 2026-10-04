@@ -1,0 +1,16 @@
+{
+  "name": "perp-spread-monitor",
+  "version": "1.0.0",
+  "description": "Perp DEX のFR乖離・価格乖離を一覧表示して通知するローカルアプリ",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "check": "node scripts/check-apis.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

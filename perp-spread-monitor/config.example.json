@@ -1,0 +1,24 @@
+{
+  "port": 3939,
+  "pollSeconds": 30,
+  "exchanges": {
+    "hyperliquid": { "enabled": true, "intervalHours": 1 },
+    "dydx":        { "enabled": true, "intervalHours": 1 },
+    "aster":       { "enabled": true, "intervalHours": 8 },
+    "lighter":     { "enabled": true, "intervalHours": 8 },
+    "paradex":     { "enabled": true, "intervalHours": 8 }
+  },
+  "alert": {
+    "frSpreadAprPct": 30,
+    "priceSpreadPct": 0.5,
+    "minVolume24hUsd": 1000000,
+    "cooldownMinutes": 30,
+    "maxPriceRatioSanity": 1.2
+  },
+  "watchlist": [],
+  "notify": {
+    "discordWebhookUrl": "",
+    "telegramBotToken": "",
+    "telegramChatId": ""
+  }
+}
