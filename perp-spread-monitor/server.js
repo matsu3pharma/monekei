@@ -7,12 +7,14 @@ const http = require('http');
 const { ADAPTERS, normalizeSymbol, makeFetchJson } = require('./exchanges');
 const { compare, alertCandidates, applyCooldown } = require('./core');
 const { formatAlert, notifyAll } = require('./notify');
+const { readResource } = require('./resources');
+const desktop = require('./desktop');
 
 const ROOT = __dirname;
 const CONFIG_PATH = process.env.CONFIG_PATH || path.join(ROOT, 'config.json');
-const EXAMPLE_PATH = path.join(ROOT, 'config.example.json');
-const INDEX_PATH = path.join(ROOT, 'public', 'index.html');
 const MAX_HISTORY = 50;
+// /api/snapshot に載せる目印。単体アプリが「すでに起動しているか」を確かめるのに使う
+const APP_ID = 'perp-spread-monitor';
 
 const DEFAULTS = {
   host: '127.0.0.1',
@@ -36,8 +38,9 @@ let configError = null;
 // ポーリングのたびに読み直す。壊れていたら直前の正常な設定で動き続ける。
 function loadConfig() {
   try {
-    if (!fs.existsSync(CONFIG_PATH) && fs.existsSync(EXAMPLE_PATH)) {
-      fs.copyFileSync(EXAMPLE_PATH, CONFIG_PATH);
+    if (!fs.existsSync(CONFIG_PATH)) {
+      fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+      fs.writeFileSync(CONFIG_PATH, readResource('config.example.json'));
       console.log('config.json が無かったので config.example.json からコピーしました');
     }
     const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8').replace(/^﻿/, ''));
@@ -172,43 +175,80 @@ async function loop() {
   setTimeout(loop, cfg.pollSeconds * 1000);
 }
 
-function startServer() {
+// ブラウザ以外（他のサイトのページなど）からの操作を防ぐ。
+// Host が自分自身で、独自ヘッダ付き（= 他オリジンからはプリフライトで止まる）のときだけ受け付ける。
+function isLocalAction(req, port) {
+  const host = String(req.headers.host || '');
+  const okHost = host === `localhost:${port}` || host === `127.0.0.1:${port}`;
+  const origin = req.headers.origin;
+  const okOrigin = !origin || origin === `http://localhost:${port}` || origin === `http://127.0.0.1:${port}`;
+  return okHost && okOrigin && req.headers['x-monitor-action'] === '1';
+}
+
+// opts.onListening(port): 待ち受け開始時 / opts.onError(err): 起動失敗時（省略時はメッセージを出して終了）
+function startServer(opts = {}) {
   const cfg = loadConfig();
+  const port = cfg.port;
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (req.method === 'POST' && url.pathname.startsWith('/api/action/')) {
+      if (!isLocalAction(req, port)) {
+        res.writeHead(403).end();
+        return;
+      }
+      const name = url.pathname.slice('/api/action/'.length);
+      if (name === 'open-config') {
+        desktop.openFile(CONFIG_PATH);
+        res.writeHead(204).end();
+        return;
+      }
+      if (name === 'quit') {
+        res.writeHead(204).end();
+        console.log('画面の「終了」ボタンで終了しました');
+        setTimeout(() => process.exit(0), 200);
+        return;
+      }
+      res.writeHead(404).end();
+      return;
+    }
     if (req.method !== 'GET') {
       res.writeHead(405).end();
       return;
     }
     if (url.pathname === '/' || url.pathname === '/index.html') {
-      fs.readFile(INDEX_PATH, (err, buf) => {
-        if (err) {
-          res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' }).end('index.html が読めません');
-          return;
-        }
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(buf);
-      });
+      let html;
+      try {
+        html = readResource('index.html');
+      } catch {
+        res.writeHead(500, { 'content-type': 'text/plain; charset=utf-8' }).end('index.html が読めません');
+        return;
+      }
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }).end(html);
       return;
     }
     if (url.pathname === '/api/snapshot') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-      res.end(JSON.stringify(snapshot));
+      res.end(JSON.stringify({ ...snapshot, app: { name: APP_ID, configPath: CONFIG_PATH } }));
       return;
     }
     res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' }).end('Not Found');
   });
   server.on('error', (err) => {
+    if (opts.onError) return opts.onError(err, port);
     if (err.code === 'EADDRINUSE') {
-      console.error(`ポート ${cfg.port} は使用中です。すでに起動していないか確認するか、config.json の port を変えてください。`);
+      console.error(`ポート ${port} は使用中です。すでに起動していないか確認するか、config.json の port を変えてください。`);
     } else {
       console.error(err);
     }
     process.exit(1);
   });
-  server.listen(cfg.port, cfg.host, () => {
-    console.log(`Perp DEX 乖離モニターを起動しました → http://localhost:${cfg.port}`);
-    console.log('止めるときはこの画面で Ctrl + C を押してください。');
+  server.listen(port, cfg.host, () => {
+    console.log(`Perp DEX 乖離モニターを起動しました → http://localhost:${port}`);
+    console.log(`設定ファイル: ${CONFIG_PATH}`);
+    if (opts.onListening) opts.onListening(port);
+    else console.log('止めるときはこの画面で Ctrl + C を押してください。');
   });
+  return server;
 }
 
 if (require.main === module) {
@@ -216,4 +256,4 @@ if (require.main === module) {
   loop();
 }
 
-module.exports = { loadConfig, poll };
+module.exports = { loadConfig, poll, startServer, loop, getSnapshot: () => snapshot, APP_ID, CONFIG_PATH };

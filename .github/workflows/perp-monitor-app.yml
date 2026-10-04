@@ -1,0 +1,127 @@
+# Perp DEX 乖離モニターを、ダブルクリックで起動できる単体アプリ（Windows .exe / Mac .app）にビルドする。
+# - ブランチへの push: ビルド＋動作確認して、Actions の「Artifacts」に置く
+# - タグ perp-monitor-v* の push: さらに GitHub の Releases にも置く（ログイン無しでダウンロードできる）
+name: perp-monitor-app
+
+on:
+  push:
+    branches-ignore: [main]
+    paths:
+      - 'perp-spread-monitor/**'
+      - '.github/workflows/perp-monitor-app.yml'
+    tags: ['perp-monitor-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: perp-spread-monitor
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test
+
+  windows:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: node scripts/build-app.js --target win-x64
+      - name: 動作確認（exe を実際に起動して全DEXから1回取得）
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'smoke'
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item dist/win-x64/PerpSpreadMonitor/PerpSpreadMonitor.exe $dir
+          $out = Join-Path $dir 'smoke.json'
+          $p = Start-Process -FilePath (Join-Path $dir 'PerpSpreadMonitor.exe') -ArgumentList "--smoke-test=$out" -WorkingDirectory $dir -PassThru
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'timeout' }
+          Get-Content $out
+          if (Test-Path (Join-Path $dir 'monitor.log')) { Get-Content (Join-Path $dir 'monitor.log') -Tail 20 }
+          $r = Get-Content $out | ConvertFrom-Json
+          if ($p.ExitCode -ne 0 -or -not $r.sea -or $r.exchangesOk -lt 5) { throw "smoke test failed (exit $($p.ExitCode))" }
+          if (-not (Test-Path (Join-Path $dir 'config.json'))) { throw 'config.json was not created next to the exe' }
+      - name: zip
+        shell: pwsh
+        run: Compress-Archive -Path dist/win-x64/PerpSpreadMonitor -DestinationPath ../PerpSpreadMonitor-windows.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PerpSpreadMonitor-windows
+          path: PerpSpreadMonitor-windows.zip
+          compression-level: 0
+
+  mac:
+    needs: test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: node scripts/build-app.js --target darwin-arm64
+      - run: node scripts/build-app.js --target darwin-x64
+      - name: 動作確認（Apple Silicon 版）
+        run: |
+          export PSM_DATA_DIR="$RUNNER_TEMP/smoke-arm64"
+          "dist/darwin-arm64/Perp Spread Monitor.app/Contents/MacOS/PerpSpreadMonitor" --smoke-test="$RUNNER_TEMP/smoke-arm64.json"
+          cat "$RUNNER_TEMP/smoke-arm64.json"
+          grep -q '"sea": true' "$RUNNER_TEMP/smoke-arm64.json"
+          test -f "$PSM_DATA_DIR/config.json"
+      - name: 動作確認（Intel 版、Rosetta があれば）
+        run: |
+          if ! arch -x86_64 /usr/bin/true 2>/dev/null; then echo "Rosetta が無いのでスキップ"; exit 0; fi
+          export PSM_DATA_DIR="$RUNNER_TEMP/smoke-x64"
+          arch -x86_64 "dist/darwin-x64/Perp Spread Monitor.app/Contents/MacOS/PerpSpreadMonitor" --smoke-test="$RUNNER_TEMP/smoke-x64.json"
+          cat "$RUNNER_TEMP/smoke-x64.json"
+          grep -q '"platform": "darwin-x64"' "$RUNNER_TEMP/smoke-x64.json"
+      - name: zip（ditto で実行権限と署名を保ったまま固める）
+        run: |
+          ditto -c -k --keepParent "dist/darwin-arm64/Perp Spread Monitor.app" ../PerpSpreadMonitor-mac-AppleSilicon.zip
+          ditto -c -k --keepParent "dist/darwin-x64/Perp Spread Monitor.app" ../PerpSpreadMonitor-mac-Intel.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PerpSpreadMonitor-mac
+          path: |
+            PerpSpreadMonitor-mac-AppleSilicon.zip
+            PerpSpreadMonitor-mac-Intel.zip
+          compression-level: 0
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/perp-monitor-v')
+    needs: [windows, mac]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Perp DEX 乖離モニター ${{ github.ref_name }}
+          body: |
+            ダブルクリックで起動できるアプリです（Node.js のインストールは不要）。
+            - Windows: PerpSpreadMonitor-windows.zip
+            - Mac（M1/M2/M3/M4 など）: PerpSpreadMonitor-mac-AppleSilicon.zip
+            - Mac（Intel）: PerpSpreadMonitor-mac-Intel.zip
+            使い方は perp-spread-monitor/README.md の「かんたん起動（アプリ版）」を見てください。
+          files: |
+            PerpSpreadMonitor-windows.zip
+            PerpSpreadMonitor-mac-AppleSilicon.zip
+            PerpSpreadMonitor-mac-Intel.zip

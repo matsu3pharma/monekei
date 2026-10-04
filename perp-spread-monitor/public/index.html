@@ -26,6 +26,12 @@
   }
   header { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
   h1 { font-size: 17px; margin: 0 0 6px; }
+  .title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .title-row h1 { margin-right: auto; }
+  .app-btn { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 12px; cursor: pointer; }
+  .app-btn:hover { border-color: var(--accent); }
+  .app-btn.quit:hover { border-color: var(--red); color: var(--red); }
+  .stopped { padding: 48px 16px; text-align: center; color: var(--muted); }
   .meta { color: var(--muted); font-size: 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
   .meta b { color: var(--text); font-weight: 600; }
   .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
@@ -88,7 +94,11 @@
 </head>
 <body>
 <header>
-  <h1>Perp DEX 乖離モニター</h1>
+  <div class="title-row">
+    <h1>Perp DEX 乖離モニター</h1>
+    <button class="app-btn" id="openConfig" title="通知先・しきい値などの設定ファイルをテキストエディタで開きます">設定を開く</button>
+    <button class="app-btn quit" id="quit" title="モニターを止めます（通知も止まります）">終了</button>
+  </div>
   <div class="meta">
     <span>最終更新: <b id="updated">—</b></span>
     <span id="thresholds">しきい値: —</span>
@@ -334,9 +344,31 @@
       .catch(function (e) {
         var banner = $('banner');
         banner.hidden = false;
-        banner.textContent = 'サーバーに接続できません（' + e.message + '）。node server.js が動いているか確認してください。';
+        banner.textContent = state.stopped
+          ? 'モニターは終了しました。もう一度使うときはアプリを起動してください。'
+          : 'モニターに接続できません（' + e.message + '）。アプリ（または node server.js）が動いているか確認してください。';
       });
   }
+
+  function action(name) {
+    return fetch('/api/action/' + name, { method: 'POST', headers: { 'X-Monitor-Action': '1' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); });
+  }
+  $('openConfig').addEventListener('click', function () {
+    action('open-config').then(function () {
+      var p = state.snap && state.snap.app && state.snap.app.configPath;
+      $('openConfig').title = '保存すると30秒以内に反映されます' + (p ? '\n' + p : '');
+    }).catch(function (e) { window.alert('設定ファイルを開けませんでした（' + e.message + '）'); });
+  });
+  $('quit').addEventListener('click', function () {
+    if (!window.confirm('モニターを終了しますか？\n終了すると Discord / Telegram への通知も止まります。')) return;
+    state.stopped = true;
+    action('quit').catch(function () {}).then(function () {
+      document.querySelector('main').innerHTML = '<div class="stopped">モニターを終了しました。このウィンドウは閉じて大丈夫です。</div>';
+      $('chips').innerHTML = '';
+      window.close();
+    });
+  });
 
   // イベント
   document.querySelectorAll('.tab').forEach(function (b) {

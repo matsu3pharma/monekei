@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e2631"/>
+      <stop offset="1" stop-color="#0f1216"/>
+    </linearGradient>
+  </defs>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="url(#bg)"/>
+  <rect x="64" y="64" width="896" height="896" rx="200" fill="none" stroke="#2a313b" stroke-width="12"/>
+  <!-- 2本の価格線が開いていく = 乖離 -->
+  <path d="M190 560 C 330 540, 420 470, 520 420 S 720 300, 840 250" fill="none" stroke="#3ecf8e" stroke-width="64" stroke-linecap="round"/>
+  <path d="M190 600 C 330 620, 420 660, 520 690 S 720 760, 840 790" fill="none" stroke="#ff6b6b" stroke-width="64" stroke-linecap="round"/>
+  <!-- 差の矢印 -->
+  <path d="M760 360 L 760 680" stroke="#f5c451" stroke-width="40" stroke-linecap="round"/>
+  <path d="M705 420 L 760 345 L 815 420" fill="none" stroke="#f5c451" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M705 620 L 760 695 L 815 620" fill="none" stroke="#f5c451" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

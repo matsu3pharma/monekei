@@ -7,10 +7,17 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check": "node scripts/check-apis.js"
+    "check": "node scripts/check-apis.js",
+    "app": "node app.js",
+    "build:win": "node scripts/build-app.js --target win-x64",
+    "build:mac": "node scripts/build-app.js --target darwin-arm64 && node scripts/build-app.js --target darwin-x64"
   },
   "engines": {
     "node": ">=18"
   },
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "postject": "1.0.0-alpha.6",
+    "rcedit": "5.0.2"
+  }
 }
