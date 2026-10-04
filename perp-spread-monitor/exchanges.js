@@ -3,22 +3,23 @@
 // 各アダプタは「取得(fetch)」と「解析(parse)」を分けている。parse は純粋関数なのでテストできる。
 // DEX を追加するときは ADAPTERS に1つ追加し、config.json の exchanges にキーを足すだけでよい。
 
-const SUFFIXES = ['-USD-PERP', '-PERP', '/USDC', '-USDC', '-USDT', '-USD', 'USDT', 'USDC'];
+// 長いものから順に照合する（'-USD-PERP' を '-USD' より先に、など）
+const SUFFIXES = ['-PERP_USDT0', '-USD-PERP', '-USD.P', '-PERP', '/USDC', '/USD', '-USDC', '-USDT', '-USD', 'USDT', 'USDC'];
 
 function normalizeSymbol(raw) {
   if (raw == null) return '';
   let s = String(raw).trim();
-  // Hyperliquid の kPEPE 形式（先頭が小文字の k + 大文字）は 1000PEPE
-  const k = /^k([A-Z0-9]+)$/.exec(s);
-  if (k) s = '1000' + k[1];
-  s = s.toUpperCase();
+  const upper = s.toUpperCase();
   for (const suf of SUFFIXES) {
-    if (s.length > suf.length && s.endsWith(suf)) {
+    if (upper.length > suf.length && upper.endsWith(suf)) {
       s = s.slice(0, -suf.length);
       break;
     }
   }
-  return s;
+  // Hyperliquid などの kPEPE 形式（先頭が小文字の k + 大文字）は 1000PEPE
+  const k = /^k([A-Z0-9]+)$/.exec(s);
+  if (k) s = '1000' + k[1];
+  return s.toUpperCase();
 }
 
 function num(x) {
@@ -147,6 +148,189 @@ function parseParadex(summary, markets, defaultIntervalHours) {
   return rows;
 }
 
+// ---------- Variational Omni ----------
+// funding_rate は「年率」の小数（例: 0.1095 = 年10.95% = 8hあたり0.01%）。
+// funding_interval_s は支払い間隔で、レートの単位ではない。
+const HOURS_PER_YEAR = 24 * 365;
+function parseVariational(data) {
+  const listings = data && data.listings;
+  if (!Array.isArray(listings)) throw new Error('Variational: listings が見つからない');
+  const rows = [];
+  for (const l of listings) {
+    if (!l || typeof l.ticker !== 'string') continue;
+    // funding_interval_s = 0 は市場休止中の RWA（FR=0・価格固定）なので除外
+    if (!(num(l.funding_interval_s) > 0)) continue;
+    const price = firstNum(l.mark_price);
+    if (price == null) continue;
+    rows.push(makeRow(l.ticker, price, l.funding_rate, HOURS_PER_YEAR, l.volume_24h));
+  }
+  return rows;
+}
+
+// ---------- Nado (Vertex 系) ----------
+// /archive/v2/contracts の funding_rate は「24時間あたり」（公式: hourly = /24）
+function parseNado(data, intervalHours) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('Nado: 想定外のレスポンス形式');
+  const rows = [];
+  for (const c of Object.values(data)) {
+    if (!c || c.product_type !== 'perpetual' || typeof c.base_currency !== 'string') continue;
+    const price = firstNum(c.mark_price, c.last_price, c.index_price);
+    if (price == null) continue;
+    rows.push(makeRow(c.base_currency, price, c.funding_rate, intervalHours, c.quote_volume));
+  }
+  return rows;
+}
+
+// ---------- Decibel (Aptos) ----------
+// /prices の funding_rate_bps は「1時間あたり・bps」。符号は is_funding_positive で持つ。
+function parseDecibel(markets, prices, contexts) {
+  if (!Array.isArray(prices)) throw new Error('Decibel: prices が配列ではない');
+  const names = new Map();
+  for (const m of Array.isArray(markets) ? markets : []) {
+    if (m && m.market_addr) names.set(m.market_addr, m.market_name);
+  }
+  const volumes = new Map();
+  for (const c of Array.isArray(contexts) ? contexts : []) {
+    if (c && c.market) volumes.set(c.market, c.volume_24h);
+  }
+  const rows = [];
+  for (const p of prices) {
+    if (!p || !p.market) continue;
+    const name = names.get(p.market);
+    if (!name) continue;
+    const price = firstNum(p.mark_px, p.mid_px, p.oracle_px);
+    if (price == null) continue;
+    const bps = num(p.funding_rate_bps);
+    const rate = bps == null ? null : (p.is_funding_positive === false ? -1 : 1) * Math.abs(bps) / 10000;
+    rows.push(makeRow(name, price, rate, 1, volumes.get(p.market)));
+  }
+  return rows;
+}
+
+// ---------- Arcus ----------
+// fundingRate / nextFundingRate は「1時間あたり」（基準 0.0000125 = 8hあたり0.01%）
+function parseArcus(data, intervalHours) {
+  const markets = data && data.markets;
+  if (!Array.isArray(markets)) throw new Error('Arcus: markets が見つからない');
+  const rows = [];
+  for (const m of markets) {
+    if (!m || m.status !== 'ONLINE' || (m.type && m.type !== 'PERPETUAL')) continue;
+    const price = firstNum(m.markPrice, m.oraclePrice, m.lastTradePrice);
+    if (price == null) continue;
+    const rate = num(m.nextFundingRate) ?? num(m.fundingRate);
+    rows.push(makeRow(m.marketDisplayName || m.baseAsset, price, rate, intervalHours, m.volume24hNotional));
+  }
+  return rows;
+}
+
+// ---------- BULK ----------
+// /stats の markets[].fundingRate は「1時間あたり」（fundingRateAnnualized = ×8760 と一致）
+function parseBulk(stats, exchangeInfo, intervalHours) {
+  const markets = stats && stats.markets;
+  if (!Array.isArray(markets)) throw new Error('BULK: markets が見つからない');
+  const status = new Map();
+  for (const i of Array.isArray(exchangeInfo) ? exchangeInfo : []) {
+    if (i && i.symbol) status.set(i.symbol, i.status);
+  }
+  const rows = [];
+  for (const m of markets) {
+    if (!m || typeof m.symbol !== 'string') continue;
+    // exchangeInfo が取れたときは TRADING のものだけ
+    if (status.size && status.get(m.symbol) !== 'TRADING') continue;
+    const price = firstNum(m.markPrice, m.lastPrice);
+    if (price == null) continue;
+    rows.push(makeRow(m.symbol, price, m.fundingRate, intervalHours, m.quoteVolume));
+  }
+  return rows;
+}
+
+// ---------- Ondo Perps ----------
+// /v1/perps/contracts。FRは毎時。nextFundingRate（今の時間の予想値）を優先する。
+// マーク価格が無いので、板の仲値 → 最終約定 → インデックス価格の順で使う。
+function parseOndo(data, intervalHours) {
+  const list = data && data.result;
+  if (!Array.isArray(list)) throw new Error('Ondo Perps: result が見つからない');
+  const rows = [];
+  for (const c of list) {
+    if (!c || c.disabled || c.productType !== 'perpetual' || typeof c.market !== 'string') continue;
+    const bid = num(c.bid);
+    const ask = num(c.ask);
+    const mid = bid > 0 && ask > 0 && ask >= bid ? (bid + ask) / 2 : null;
+    const price = firstNum(mid, c.lastPrice, c.indexPrice);
+    if (price == null) continue;
+    const rate = num(c.nextFundingRate) ?? num(c.fundingRate);
+    rows.push(makeRow(c.market, price, rate, intervalHours, c.usdVolume ?? c.quoteVolume));
+  }
+  return rows;
+}
+
+// ---------- SoDEX ----------
+// /perps/markets/tickers。fundingRate は1回の支払い（symbols の fundingInterval 秒）あたり。現状は全銘柄3600秒。
+function parseSodex(tickers, symbols, defaultIntervalHours) {
+  const list = tickers && tickers.data;
+  if (!Array.isArray(list)) throw new Error('SoDEX: data が見つからない');
+  const info = new Map();
+  for (const s of (symbols && Array.isArray(symbols.data) && symbols.data) || []) {
+    if (s && s.name) info.set(s.name, s);
+  }
+  const rows = [];
+  for (const t of list) {
+    if (!t || typeof t.symbol !== 'string') continue;
+    const s = info.get(t.symbol);
+    if (s && s.status && s.status !== 'TRADING') continue;
+    const price = firstNum(t.markPrice, t.lastPx, t.indexPrice);
+    if (price == null) continue;
+    const sec = num(s && s.fundingInterval);
+    const h = sec > 0 ? sec / 3600 : defaultIntervalHours;
+    rows.push(makeRow(t.symbol, price, t.fundingRate, h, t.quoteVolume));
+  }
+  return rows;
+}
+
+// ---------- PopDEX ----------
+// tickers の fundingRate は小数6桁に丸められているので、/market/funding-rate の値（と間隔）を優先する。
+// fundingRate は1回の支払い（fundingRateInterval 時間）あたり。
+function parsePopdex(tickerPages, fundingPages, defaultIntervalHours) {
+  const tickers = tickerPages.flatMap((p) => (p && Array.isArray(p.data) ? p.data : []));
+  if (!tickerPages.length || !tickerPages.every((p) => p && Array.isArray(p.data))) {
+    throw new Error('PopDEX: tickers の data が見つからない');
+  }
+  const funding = new Map();
+  for (const f of fundingPages.flatMap((p) => (p && Array.isArray(p.data) ? p.data : []))) {
+    if (f && f.symbol) funding.set(f.symbol, f);
+  }
+  const rows = [];
+  for (const t of tickers) {
+    if (!t || typeof t.symbol !== 'string' || String(t.category).toLowerCase() !== 'futures') continue;
+    if (t.status && t.status !== 'Trading') continue;
+    const price = firstNum(t.markPrice, t.lastPrice, t.indexPrice);
+    if (price == null) continue;
+    const f = funding.get(t.symbol);
+    const rate = f ? f.fundingRate : t.fundingRate;
+    const h = num(f && f.fundingRateInterval) > 0 ? num(f.fundingRateInterval) : defaultIntervalHours;
+    rows.push(makeRow(t.symbol, price, rate, h, t.turnover24h));
+  }
+  return rows;
+}
+
+// cursor 方式のページングをまとめて取る（最大 maxPages ページ）
+async function fetchPages(fetchJson, url, limit, maxPages = 10) {
+  const pages = [];
+  let cursor = '0';
+  for (let i = 0; i < maxPages; i++) {
+    const sep = url.includes('?') ? '&' : '?';
+    const page = await fetchJson(`${url}${sep}limit=${limit}&cursor=${encodeURIComponent(cursor)}`);
+    pages.push(page);
+    const n = page && Array.isArray(page.data) ? page.data.length : 0;
+    const next = page && page.cursor != null ? String(page.cursor) : null;
+    const total = num(page && page.total);
+    const seen = pages.reduce((a, p) => a + (p && Array.isArray(p.data) ? p.data.length : 0), 0);
+    if (n < limit || next == null || next === cursor || (total != null && seen >= total)) break;
+    cursor = next;
+  }
+  return pages;
+}
+
 const ADAPTERS = {
   hyperliquid: {
     label: 'Hyperliquid',
@@ -206,6 +390,94 @@ const ADAPTERS = {
       return parseParadex(summary, markets, intervalHours);
     },
   },
+  variational: {
+    label: 'Variational',
+    // APIのFRが年率なので「8760時間あたり」として扱う（config で変える必要はない）
+    defaultIntervalHours: HOURS_PER_YEAR,
+    async fetch({ fetchJson }) {
+      const data = await fetchJson('https://omni-client-api.prod.ap-northeast-1.variational.io/metadata/stats');
+      return parseVariational(data);
+    },
+  },
+  nado: {
+    label: 'Nado',
+    defaultIntervalHours: 24,
+    async fetch({ fetchJson, intervalHours }) {
+      const data = await fetchJson('https://api.prod.nado.xyz/archive/v2/contracts');
+      return parseNado(data, intervalHours);
+    },
+  },
+  arcus: {
+    label: 'Arcus',
+    defaultIntervalHours: 1,
+    async fetch({ fetchJson, intervalHours }) {
+      const data = await fetchJson('https://api.arcus.xyz/v1/markets');
+      return parseArcus(data, intervalHours);
+    },
+  },
+  bulk: {
+    label: 'BULK',
+    defaultIntervalHours: 1,
+    async fetch({ fetchJson, intervalHours }) {
+      const base = 'https://mainnet-api1.bulk.trade/api/v1';
+      const [stats, info] = await Promise.all([
+        fetchJson(`${base}/stats`),
+        fetchJson(`${base}/exchangeInfo`).catch(() => []),
+      ]);
+      return parseBulk(stats, info, intervalHours);
+    },
+  },
+  ondo: {
+    label: 'Ondo Perps',
+    defaultIntervalHours: 1,
+    async fetch({ fetchJson, intervalHours }) {
+      const data = await fetchJson('https://api.ondoperps.xyz/v1/perps/contracts');
+      return parseOndo(data, intervalHours);
+    },
+  },
+  sodex: {
+    label: 'SoDEX',
+    defaultIntervalHours: 1,
+    async fetch({ fetchJson, intervalHours }) {
+      const base = 'https://mainnet-gw.sodex.dev/api/v1/perps/markets';
+      const [tickers, symbols] = await Promise.all([
+        fetchJson(`${base}/tickers`),
+        fetchJson(`${base}/symbols`).catch(() => null),
+      ]);
+      return parseSodex(tickers, symbols, intervalHours);
+    },
+  },
+  popdex: {
+    label: 'PopDEX',
+    defaultIntervalHours: 1,
+    async fetch({ fetchJson, intervalHours }) {
+      const base = 'https://api.popdex.xyz/api/v1';
+      const [tickers, funding] = await Promise.all([
+        fetchPages(fetchJson, `${base}/public/market/tickers?category=Futures`, 100),
+        fetchPages(fetchJson, `${base}/market/funding-rate`, 100).catch(() => []),
+      ]);
+      return parsePopdex(tickers, funding, intervalHours);
+    },
+  },
+  decibel: {
+    label: 'Decibel',
+    defaultIntervalHours: 1,
+    // API キー（Geomi の Bearer トークン）が必須。config.json の exchanges.decibel.apiKey に入れると有効になる
+    defaultEnabled: false,
+    requiresApiKey: true,
+    async fetch({ fetchJson, config }) {
+      const key = config && config.apiKey;
+      if (!key) throw new Error('APIキー未設定（config.json の exchanges.decibel.apiKey）');
+      const base = 'https://api.mainnet.aptoslabs.com/decibel/api/v1';
+      const init = { headers: { authorization: `Bearer ${key}`, origin: 'https://app.decibel.trade' } };
+      const [markets, prices, contexts] = await Promise.all([
+        fetchJson(`${base}/markets`, init),
+        fetchJson(`${base}/prices`, init),
+        fetchJson(`${base}/asset_contexts`, init).catch(() => []),
+      ]);
+      return parseDecibel(markets, prices, contexts);
+    },
+  },
 };
 
 function makeFetchJson(timeoutMs = 15000) {
@@ -232,4 +504,13 @@ module.exports = {
   parseAster,
   parseLighter,
   parseParadex,
+  parseVariational,
+  parseNado,
+  parseDecibel,
+  parseArcus,
+  parseBulk,
+  parseOndo,
+  parseSodex,
+  parsePopdex,
+  fetchPages,
 };

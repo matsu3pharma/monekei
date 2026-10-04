@@ -1,6 +1,6 @@
 # Perp DEX 乖離モニター
 
-複数の Perp DEX（Hyperliquid / dYdX / Aster / Lighter / Paradex）の公開データを30秒ごとに取得し、
+複数の Perp DEX（Hyperliquid / dYdX / Aster / Lighter / Paradex / Variational / Nado / Arcus / BULK / Ondo Perps / SoDEX / PopDEX、APIキーを入れれば Decibel も）の公開データを30秒ごとに取得し、
 **同じ銘柄のファンディングレート(FR)の差**と**価格の差**を一覧表示するアプリです。
 差が大きくなったら画面・Discord・Telegram でお知らせします。
 
@@ -68,10 +68,11 @@ node server.js
   - **ショート先**：FRが一番高いDEX（ショートするとFRを受け取る側）
   - **ロング先**：FRが一番低いDEX
   - **FR差年率**：1時間あたりのFR差 × 24 × 365
-  - FRの支払い間隔はDEXごとに違う（1時間・4時間・8時間）ので、すべて**1時間あたりに直してから**比べています
+  - FRの表示単位はDEXごとに違う（1時間・4時間・8時間・24時間あたり、年率など）ので、すべて**1時間あたりに直してから**比べています
 - **価格乖離タブ**：価格の差が大きい順
 - **出来高(小)**：その銘柄を扱うDEXのうち、一番少ない24時間出来高（薄い方が実際の制約になるため）
 - **⚠ マーク**：同じ名前なのに価格が20%以上ずれている銘柄。単位違い（例：PEPE と 1000PEPE）や別物の可能性が高いので、通知の対象から外しています
+  - 3つ以上のDEXにある銘柄で、1つのDEXだけ価格が大きく違う場合（例：株の QNT と仮想通貨の QNT）は、そのDEXだけを「別物？除外」として比較から外し、残りで比べます
 - 黄色い線の付いた行：しきい値を超えている行
 - 行をクリックすると、DEXごとの元の銘柄名・価格・FR（1時間・年率・DEXが表示している生の値）・出来高が見られます
 - 「出来高フィルタ」：ONにすると、出来高(小)がしきい値未満の銘柄を隠します
@@ -99,8 +100,30 @@ node server.js
 | `alert.maxPriceRatioSanity` | 価格がこの倍率以上ずれていたら ⚠ 扱い | 1.2（=20%） |
 | `watchlist` | 見たい銘柄だけに絞る。例：`["BTC", "ETH", "SOL"]`。空 `[]` なら全部 | [] |
 
-`intervalHours` の初期値：Hyperliquid 1 / dYdX 1 / Aster 8 / Lighter 8 / Paradex 8
-（Aster と Paradex は、DEX側が銘柄ごとの間隔を返す場合はそちらを優先します。詳しくは `docs/api-notes.md`）
+`intervalHours` の初期値（2026年10月に実データで確認済み。ふつうは変更不要）：
+
+| DEX | intervalHours | 備考 |
+|---|---|---|
+| Hyperliquid / dYdX / Arcus / BULK / Ondo Perps / Decibel | 1 | |
+| Aster | 8 | 銘柄ごとの間隔をAPIから取るので、取得に失敗したときだけ使われる |
+| Lighter | 8 | 支払いは毎時だが、APIの値は8時間あたり |
+| Paradex | 8 | 銘柄ごとの間隔をAPIから取る |
+| Nado | 24 | APIの値が24時間あたり |
+| Variational | 8760 | APIの値が年率（8760時間あたり） |
+| SoDEX / PopDEX | 1 | 銘柄ごとの間隔をAPIから取るので、取得に失敗したときだけ使われる |
+
+詳しくは `docs/api-notes.md`。
+
+### Decibel を使う場合（APIキーが必要）
+
+Decibel だけは公開データの取得にもAPIキー（Bearer トークン）が必要なので、初期状態では無効です。
+
+1. https://geomi.dev でAPIキーを発行（手順：https://docs.decibel.trade/quickstart/node-api-key ）
+2. `config.json` を次のように変更：
+   ```json
+   "decibel": { "enabled": true, "intervalHours": 1, "apiKey": "（発行したキー）" }
+   ```
+3. `node scripts/check-apis.js` で `[Decibel]` に銘柄数と BTC/ETH の値が出ることを確認
 
 ---
 
@@ -135,7 +158,7 @@ node server.js
 確認できたら元の値に戻してください（同じ通知は `cooldownMinutes` の間は繰り返されません）。
 通知の送信に失敗すると、黒い画面とアラート履歴に赤字で理由が出ます。
 
-> **`config.json` には Webhook URL やトークンが入ります。人に渡したり、ネットに公開したりしないでください。**
+> **`config.json` には Webhook URL やトークン（Decibel のAPIキーも）が入ります。人に渡したり、ネットに公開したりしないでください。**
 
 ---
 

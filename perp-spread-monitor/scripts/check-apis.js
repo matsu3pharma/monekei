@@ -3,6 +3,8 @@
 // 使い方: node scripts/check-apis.js
 // 出力の「1h換算」を各DEXの公式画面のFR表示と見比べ、config.json の intervalHours を確定させる。
 
+const fs = require('fs');
+const path = require('path');
 const { ADAPTERS, makeFetchJson } = require('../exchanges');
 
 const fetchJson = makeFetchJson(20000);
@@ -75,10 +77,37 @@ async function main() {
     console.log(`  BTC-USD-PERP funding_period_hours: ${m.funding_period_hours}`);
   }
 
+  const vs = await raw('Variational metadata/stats', 'https://omni-client-api.prod.ap-northeast-1.variational.io/metadata/stats');
+  if (vs && vs.listings) {
+    const { quotes, ...btc } = vs.listings.find((x) => x.ticker === 'BTC') || {};
+    console.log(`  BTC: ${JSON.stringify(btc)}`);
+  }
+  const nd = await raw('Nado archive/v2/contracts', 'https://api.prod.nado.xyz/archive/v2/contracts');
+  if (nd) console.log(`  BTC-PERP_USDT0: ${JSON.stringify(nd['BTC-PERP_USDT0'])}`);
+  const ar = await raw('Arcus markets', 'https://api.arcus.xyz/v1/markets');
+  if (ar && ar.markets) {
+    const m = ar.markets.find((x) => x.marketDisplayName === 'BTC-USD') || {};
+    console.log(`  BTC-USD: fundingRate=${m.fundingRate} nextFundingRate=${m.nextFundingRate} markPrice=${m.markPrice} volume24hNotional=${m.volume24hNotional}`);
+  }
+  const bk = await raw('BULK stats', 'https://mainnet-api1.bulk.trade/api/v1/stats');
+  if (bk && bk.markets) console.log(`  BTC-USD: ${JSON.stringify(bk.markets.find((x) => x.symbol === 'BTC-USD'))}`);
+  const od = await raw('Ondo Perps contracts', 'https://api.ondoperps.xyz/v1/perps/contracts');
+  if (od && od.result) console.log(`  BTC-USD.P: ${JSON.stringify(od.result.find((x) => x.market === 'BTC-USD.P'))}`);
+  const sd = await raw('SoDEX perps tickers', 'https://mainnet-gw.sodex.dev/api/v1/perps/markets/tickers');
+  if (sd && sd.data) console.log(`  BTC-USD: ${JSON.stringify(sd.data.find((x) => x.symbol === 'BTC-USD'))}`);
+  const pf = await raw('PopDEX funding-rate', 'https://api.popdex.xyz/api/v1/market/funding-rate?limit=100');
+  if (pf && pf.data) console.log(`  BTCUSDT: ${JSON.stringify(pf.data.find((x) => x.symbol === 'BTCUSDT'))}  total=${pf.total}`);
+
+  // Decibel など APIキーが必要なDEXは config.json の設定を使う
+  let exCfg = {};
+  try {
+    exCfg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8').replace(/^\uFEFF/, '')).exchanges || {};
+  } catch {}
+
   console.log('\n=== アダプタ経由（このアプリが実際に使う値） ===');
   for (const [id, a] of Object.entries(ADAPTERS)) {
     try {
-      const rows = await a.fetch({ fetchJson, intervalHours: a.defaultIntervalHours });
+      const rows = await a.fetch({ fetchJson, intervalHours: a.defaultIntervalHours, config: exCfg[id] || {} });
       console.log(`\n[${a.label}] ${rows.length} 銘柄`);
       for (const r of rows.filter((r) => WATCH.includes(r.symbol))) {
         const h = r.fundingHourly;

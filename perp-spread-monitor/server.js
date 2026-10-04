@@ -50,9 +50,13 @@ function loadConfig() {
     };
     for (const [id, a] of Object.entries(ADAPTERS)) {
       const e = (raw.exchanges || {})[id] || {};
+      const apiKey = typeof e.apiKey === 'string' ? e.apiKey.trim() : '';
+      // 既定で無効のDEX（APIキー必須など）は、enabled を明示するかキーを入れたときだけ有効
+      const defaultEnabled = a.defaultEnabled === false ? (a.requiresApiKey ? !!apiKey : false) : true;
       cfg.exchanges[id] = {
-        enabled: e.enabled !== false,
+        enabled: e.enabled == null ? defaultEnabled : e.enabled !== false,
         intervalHours: Number(e.intervalHours) > 0 ? Number(e.intervalHours) : a.defaultIntervalHours,
+        apiKey,
       };
     }
     cfg.pollSeconds = Math.max(5, Number(cfg.pollSeconds) || DEFAULTS.pollSeconds);
@@ -70,7 +74,7 @@ function loadConfig() {
 function loadDefaults() {
   const cfg = { ...DEFAULTS, exchanges: {} };
   for (const [id, a] of Object.entries(ADAPTERS)) {
-    cfg.exchanges[id] = { enabled: true, intervalHours: a.defaultIntervalHours };
+    cfg.exchanges[id] = { enabled: a.defaultEnabled !== false, intervalHours: a.defaultIntervalHours, apiKey: '' };
   }
   return cfg;
 }
@@ -104,7 +108,7 @@ async function poll() {
       }
       const started = Date.now();
       try {
-        const rows = await adapter.fetch({ fetchJson, intervalHours: ex.intervalHours });
+        const rows = await adapter.fetch({ fetchJson, intervalHours: ex.intervalHours, config: ex });
         if (!rows.length) throw new Error('銘柄が0件');
         byDex[id] = rows;
         status[id] = { label: adapter.label, enabled: true, ok: true, count: rows.length, error: null, ms: Date.now() - started };

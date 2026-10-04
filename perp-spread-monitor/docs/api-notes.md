@@ -1,82 +1,160 @@
 # API確認メモ
 
-## 確認方法について（重要）
+## 確認方法
 
-このアプリを作った環境（クラウド上の開発コンテナ）からは、5つのDEXのAPIホストすべてへの通信がネットワーク制限でブロックされていました（`HTTP 403 Host not in allowlist`）。
-そのため、**実際のレスポンスはまだ取得できていません**。下の内容は各DEXの公式ドキュメント・公開情報をもとにしたもので、アダプタはその形に合わせて実装しています。
+2026-10-04 に `node scripts/check-apis.js` で全DEXの実レスポンスを取得して確認しました（以前の版では開発環境のネットワーク制限で取得できず、ドキュメントだけを根拠にしていました）。
 
-手元のPCで次を実行すると、実際のレスポンスの形と BTC/ETH の値（1h換算・8h換算）が表示されます。
+FR の単位は、**どのDEXでも「金利だけでプレミアムが無いときの基準値」= 8時間あたり 0.01%（1時間あたり 0.00125%、年率 10.95%）** になることを利用して確定させています。BTC・ETH・SOL・DOGE など多くの銘柄がこの基準値ちょうどになっているので、生の値がその何倍になっているかで「何時間あたりの値か」が分かります。
+
+手元で再確認するときは：
 
 ```
 node scripts/check-apis.js
 ```
 
-表示された値を各DEXの公式画面のFR表示と見比べて、`config.json` の `intervalHours` を確定させてください。
+「8h換算」がどのDEXでも 0.01% 前後になっていれば、`intervalHours` は正しく設定されています。
+
+## 一覧
+
+| DEX | 取得元 | 生のFRの単位 | `intervalHours` | 価格 | 出来高 |
+|---|---|---|---|---|---|
+| Hyperliquid | `POST /info metaAndAssetCtxs` | 1時間あたり | 1 | markPx | dayNtlVlm (USD) |
+| dYdX | `/v4/perpetualMarkets` | 1時間あたり | 1 | oraclePrice | volume24H (USD) |
+| Aster | `/fapi/v1/premiumIndex` 他 | 1回の支払いあたり（銘柄ごとに 1/2/4/8h） | 8（fundingInfo に無い銘柄だけ） | markPrice | quoteVolume (USDT) |
+| Lighter | `/funding-rates` + `/orderBookDetails` | **8時間あたり（確定）** | 8 | mark_price | daily_quote_token_volume (USDC) |
+| Paradex | `/markets/summary` + `/markets` | **8時間あたり（確定）** | 8 | mark_price | volume_24h (USD) |
+| Variational | `/metadata/stats` | **年率** | 8760 | mark_price | volume_24h (USD) |
+| Nado | `/archive/v2/contracts` | 24時間あたり | 24 | mark_price | quote_volume (USDT0) |
+| Arcus | `/v1/markets` | 1時間あたり | 1 | markPrice | volume24hNotional (USD) |
+| BULK | `/api/v1/stats` | 1時間あたり | 1 | markPrice | quoteVolume (USD) |
+| Ondo Perps | `/v1/perps/contracts` | 1時間あたり | 1 | 板の仲値 | usdVolume (USD) |
+| SoDEX | `/perps/markets/tickers` + `/symbols` | 1回の支払いあたり（現状全銘柄1h） | 1（symbols が取れないときだけ） | markPrice | quoteVolume (USDC) |
+| PopDEX | `/public/market/tickers` + `/market/funding-rate` | 1回の支払いあたり（現状全銘柄1h） | 1（funding-rate が取れないときだけ） | markPrice | turnover24h (USDT) |
+| Decibel | `/api/v1/prices` 他（**APIキー必須**） | 1時間あたり（bps） | 1 | mark_px | volume_24h |
 
 ---
 
 ## Hyperliquid
 
 - `POST https://api.hyperliquid.xyz/info` `{"type":"metaAndAssetCtxs"}` → `[meta, ctxs]`
-- `meta.universe[i]`（`name`, `szDecimals`, `maxLeverage`, `isDelisted?`）と `ctxs[i]`（`markPx`, `oraclePx`, `midPx`, `funding`, `dayNtlVlm`, `openInterest` …）が位置で対応
-- 数値はすべて文字列
-- **FR間隔: 1時間**（`funding` は1時間あたりの値）
-- 1000倍銘柄は `kPEPE`, `kBONK`, `kSHIB` などの表記
-- レート制限: IPあたり 1200 weight/分。`metaAndAssetCtxs` は weight 20 → 30秒ごと（2回/分）は問題なし
+- `meta.universe[i]` と `ctxs[i]` が位置で対応。数値はすべて文字列
+- **FR: 1時間あたり**。実測 BTC `funding=0.0000125`（= 基準値）
+- 1000倍銘柄は `kPEPE` 形式 → `1000PEPE` に正規化
+- レート制限: IPあたり 1200 weight/分。`metaAndAssetCtxs` は weight 20
 
 ## dYdX v4
 
 - `GET https://indexer.dydx.trade/v4/perpetualMarkets` → `{ markets: { "BTC-USD": {...} } }`
-- 使用フィールド: `ticker`, `status`（`ACTIVE` のみ）, `oraclePrice`, `nextFundingRate`, `volume24H`（USD）
-- **FR間隔: 1時間**。公式ドキュメントでは「資金調達は毎時、直近60分のプレミアム平均から計算」とされており、`nextFundingRate` は1時間あたりの予測値
-- dYdX はマーク価格ではなくオラクル価格を使う（仕様どおり）
-- レート制限: 公開インデクサは IP あたり数百リクエスト/分程度。30秒ごとの1リクエストは問題なし
+- `nextFundingRate` は1時間あたりの予測値（実測 BTC `-0.0000040`）
+- 出来高がかなり小さい（BTC でも 24h 約 84 万ドル）。出来高フィルタで弾かれやすい
+- レート制限ヘッダ: `ratelimit-limit=100`
 
 ## Aster
 
-- Binance 互換 API
-- `GET /fapi/v1/premiumIndex` → 配列 `{symbol, markPrice, indexPrice, lastFundingRate, nextFundingTime, ...}`
-- `GET /fapi/v1/fundingInfo` → **存在する**（公式 API ドキュメントに記載あり）。配列 `{symbol, interestRate, time, fundingIntervalHours, fundingFeeCap, fundingFeeFloor}`
-  - Binance と同様、**FRパラメータが調整された銘柄だけ**が載る想定。載っていない銘柄は 8 時間（`config.json` の `intervalHours`）として扱う
-  - 例として ZORAUSDT は 4 時間
-- `GET /fapi/v1/ticker/24hr` → `quoteVolume`（USDT建て出来高）
-- USDT 建て（`symbol` が `USDT` で終わる）のみ使用
-- レート制限: 2400 weight/分。3本合計で weight 50 程度 → 30秒ごとは問題なし
+- `premiumIndex` / `fundingInfo` / `ticker/24hr`（Binance 互換）
+- `fundingInfo` は**全銘柄（770）**が載っていた。`fundingIntervalHours` の分布: 1h=95, 2h=3, 4h=359, 8h=313
+  - そのため `config.json` の `intervalHours` は、fundingInfo の取得に失敗したときだけ使われる
+- レート制限ヘッダ: `x-mbx-used-weight-1m`
 
 ## Lighter
 
-- ベース `https://mainnet.zklighter.elliot.ai/api/v1`
-- `GET /funding-rates` → `{ code, funding_rates: [{ market_id, exchange, symbol, rate }] }`
-  - `exchange` に `binance`, `bybit`, `hyperliquid`, `lighter` などが混ざる → `lighter` のみ使用
-- `GET /orderBookDetails?filter=perp` → `{ code, order_book_details: [{ market_id, symbol, status, last_trade_price, daily_quote_token_volume, ... }] }`
-  - 価格は `mark_price` があればそれ、なければ `last_trade_price`
-  - 出来高は `daily_quote_token_volume`（USDC建て）
-- **FR間隔: 支払いは1時間ごと**（公式ドキュメント）。ただし `/funding-rates` の `rate` は、他取引所と並べて比較するための値で、**8時間あたりに正規化されている**という情報が複数ある（funding-rates に Binance 等の 8h FR と並べて返している点とも整合）。
-  - → 暫定で `intervalHours: 8` のまま。**要確認**：`check-apis.js` の BTC の「8h換算」が Lighter 公式画面の FR と一致するか、「1h換算」が一致するかで判定
-- 銘柄表記: `1000PEPE` 形式か `PEPE` 形式かは**未確認**（`check-apis.js` が PEPE/SHIB/BONK 系の表記を一覧表示する）
-- レート制限: 公開エンドポイントは IP あたり 60 リクエスト/分程度とされる。30秒ごとに2本なので問題なし
+- `GET /api/v1/funding-rates` → `{ funding_rates: [{ market_id, exchange, symbol, rate }] }`（`exchange` は binance / bybit / hyperliquid / lighter）
+- **`rate` は 8時間あたりに正規化された値（確定）**。根拠：
+  1. 同じレスポンスの `exchange: "hyperliquid"` の BTC が `0.0001`。Hyperliquid 自身の値は 1時間あたり `0.0000125` で、その 8 倍と一致
+  2. Lighter 自身の `GET /api/v1/fundings?market_id=1&resolution=1h` は、毎時の支払いレートを **% 表記**で `"rate":"0.0012"`（= 0.000012/時）と返しており、`funding-rates` の lighter BTC `0.000096` = 0.000012 × 8 と一致
+- 支払いは毎時。`intervalHours: 8` で正しい
+- 銘柄表記は `1000PEPE`, `1000SHIB`, `1000BONK`, `1000FLOKI` 形式（Hyperliquid の `kPEPE` 正規化後と一致）
+- 価格は `mark_price`（文字列）がある
 
 ## Paradex
 
-- `GET https://api.prod.paradex.trade/v1/markets/summary?market=ALL` → `{ results: [{ symbol, mark_price, last_traded_price, funding_rate, volume_24h, open_interest, ... }] }`
-  - `-USD-PERP` で終わるものだけ使用（オプション `BTC-USD-70000-C` などを除外）
-- `GET /v1/markets` → `{ results: [{ symbol, funding_period_hours, ... }] }`
-  - `funding_period_hours` があれば銘柄ごとにそれを使う（無ければ `config.json` の値）
-- **FR間隔: 8時間**。公式ドキュメント「Funding Premium は8時間あたりの額」「Funding Interval は全銘柄 8h」。
-  - 2026年6月の Funding V2 で、支払いは毎秒の連続計算に変わったが、表示上の `funding_rate` は引き続き 8 時間あたりの値とされている
-- `volume_24h` は USD 建てとして扱う（**要確認**）
-- レート制限: 公開 API は IP あたり 1500 リクエスト/分。問題なし
+- `GET /v1/markets/summary?market=ALL` の `funding_rate` は **8時間あたり（確定）**
+  - `GET /v1/funding/data?market=BTC-USD-PERP` が `funding_rate` と `funding_rate_8h` を並べて返し、`funding_period_hours: 8` のとき両者が一致
+  - BTC `0.000093`（8h）は他DEXの BTC と同じ水準。1時間あたりだとすると年率 80% 超になり不自然
+- `/v1/markets` の `funding_period_hours` は全 63 銘柄 8
+- `funding_multiplier` が 0.5 の銘柄（株・商品・指数の 21 銘柄）があるが、`funding_rate` は適用後の値（`funding_premium / 価格` と一致）なので追加の補正は不要
+- **`volume_24h` は USD 建て（確定）**。BTC で `660108` → BTC 建てなら 66 万 BTC になってしまい不可能。`total_volume`（累計）も USD
+- レート制限ヘッダ: `x-ratelimit-limit=50`（1秒窓）
+
+## Variational Omni
+
+- `GET https://omni-client-api.prod.ap-northeast-1.variational.io/metadata/stats` → `{ listings: [...] }`（約 560 銘柄）
+- **`funding_rate` は年率の小数**。公式ドキュメントには単位の記載が無いが、SOL・DOGE・ZRO などが `0.1095` = 年 10.95% = 基準値ちょうど。BTC `0.0772` は 8h 換算 0.0071% で他DEXと同水準
+- `funding_interval_s` は支払い間隔（3600 / 14400 / 28800）で、レートの単位には関係しない
+- `funding_interval_s = 0` の銘柄（`US100S`, `XAUS` など休止中の RWA、FR=0）は除外
+- 価格は `mark_price`。RFQ 型なので板は無いが `quotes` に bid/ask がある
+
+## Nado
+
+- `GET https://api.prod.nado.xyz/archive/v2/contracts` → `{ "BTC-PERP_USDT0": {...} }`（82 銘柄、すべて perpetual）
+- **`funding_rate` は 24時間あたり**（公式: "Current 24hr funding rate. Can compute hourly funding rate dividing by 24."）。実測 ETH `0.0003` = 0.0000125 × 24
+- 支払いは毎時
+- 銘柄は `base_currency`（`BTC-PERP`, `kPEPE-PERP`）から正規化
+- `gateway` 系エンドポイントは `Accept-Encoding: gzip` 必須（Node の fetch は自動で付ける）
+
+## Arcus
+
+- `GET https://api.arcus.xyz/v1/markets` → `{ markets: [...] }`（認証不要）
+- `fundingRate`（直近確定）・`nextFundingRate`（今の時間の予測）とも **1時間あたり**。実測 ETH `0.0000125`。予測値の方を使う
+- `status: "ONLINE"` のみ使用。株・指数・商品も多い（`category`）
+- 注意: `QNT-USD` は株（Quantinuum、$46）で、他DEXの仮想通貨 QNT（$260）とは別物。後述の「別物の除外」で自動的に比較から外れる
+
+## BULK
+
+- `GET https://mainnet-api1.bulk.trade/api/v1/stats` → `{ markets: [{ symbol, fundingRate, fundingRateAnnualized, markPrice, quoteVolume }] }`
+- **`fundingRate` は 1時間あたり**（`fundingRateAnnualized` = ×8760 と一致、公式「毎時」）
+- `GET /exchangeInfo` の `status` が `TRADING` の銘柄だけ使う（2026-10 時点で 22 銘柄中 8 銘柄、残りは `SUSPENDED`）
+- `stats`（銘柄指定なし）は 600 秒キャッシュ。FR・価格は最大 10 分遅れることがある
+
+## Ondo Perps
+
+- `GET https://api.ondoperps.xyz/v1/perps/contracts`（認証不要）→ `{ result: [...] }`
+- **FR は毎時**（公式「Funding is paid every hour」）。`fundingRate`（直近確定）と `nextFundingRate`（予測）。実測 BTC `0.0000125`
+- マーク価格のフィールドが無いので、`bid`/`ask` の仲値 → `lastPrice` → `indexPrice` の順で使う
+- 銘柄は `BTC-USD.P` 形式。株・ETF・商品が中心
+
+## SoDEX
+
+- `GET https://mainnet-gw.sodex.dev/api/v1/perps/markets/tickers`（認証不要）
+- `fundingRate` は 1回の支払いあたり。`/perps/markets/symbols` の `fundingInterval`（秒）が全 99 銘柄 3600 → **1時間あたり**。実測 XLM `0.0000125`
+- `symbols` の `status` が `TRADING` のものだけ（`HALT` を除外）
+- 銘柄は `BTC-USD`、`1000PEPE-USD` 形式
+- レート制限ヘッダ: `x-ratelimit-limit=6000`
+
+## PopDEX
+
+- REST は `https://api.popdex.xyz`（DefiLlama のアダプタにある `api.popdex.ai` はこの環境から Cloudflare で拒否された）
+- `GET /api/v1/public/market/tickers?category=Futures`（ページング: `limit` 最大 100・`cursor`）
+- `GET /api/v1/market/funding-rate`（パスに `public` が付かない点に注意）→ `fundingRate` と `fundingRateInterval`（時間）
+  - tickers の `fundingRate` は小数 6 桁に丸められているので、こちらを優先
+  - 公式: FR は `Clamp(8h率) × (fundingInterval / 8)` で、**1回の支払いあたり**。現状は全 66 銘柄 1h
+- 出来高は `turnover24h`（USDT 建て）
+- レート制限: IP あたり 1200 weight/分、tickers / funding-rate は各 weight 2
+
+## Decibel（APIキー必須・既定で無効）
+
+- REST `https://api.mainnet.aptoslabs.com/decibel/api/v1/...` は**すべて Bearer トークン必須**（キー無しは `401 anonymous requests are not allowed`）
+  - トークンは Geomi（https://geomi.dev）で発行。手順は https://docs.decibel.trade/quickstart/node-api-key
+- `GET /prices` → `[{ market(アドレス), mark_px, funding_rate_bps, is_funding_positive, funding_period_s }]`
+  - **`funding_rate_bps` は 1時間あたり・bps**（公式スキーマ: "Hourly funding rate in basis points"）。符号は `is_funding_positive`
+- `GET /markets` で `market_addr` → `market_name`（`BTC/USD` 形式）、`GET /asset_contexts` で `volume_24h`
+- **実データでは未確認**（キーが無いため）。使う場合は `config.json` の `exchanges.decibel` に `apiKey` を入れ、`enabled` を `true` にして `node scripts/check-apis.js` で確認する
+
+## 追加しなかったDEX
+
+| DEX | 理由 |
+|---|---|
+| JTX（Jito Labs） | 2026-10 時点で現物のみ。Perp は Phoenix との連携で「今後」とされており、公開の Perp API が無い |
+
+---
+
+## 同名の別物の除外（core.js）
+
+DEX が増えると、株のティッカーと仮想通貨のティッカーがぶつかることがある（例: Arcus の `QNT` = Quantinuum 株 $46、他DEXの `QNT` = Quant $260。Aster の `BB` も他DEXの `BB` と価格が 1000 倍違う）。
+
+- 3 つ以上のDEXに同名銘柄があるとき、価格が中央値から `maxPriceRatioSanity` 倍（既定 1.2 倍）以上離れたDEXは「別物」として FR・価格・出来高の比較から外す（詳細表示には「別物？除外」と出る）
+- 2 つのDEXしか無い、または 2 対 2 に割れていてどちらが本物か決められないときは、従来どおり銘柄全体を ⚠（suspicious）にして通知対象から外す
 
 ## CORS
 
 すべて Node（サーバー側）から取得し、ブラウザは `localhost` の `/api/snapshot` しか叩かないため、CORS は関係しない。
-
-## 仕様（SPEC §3）との食い違い・補足
-
-| 項目 | SPEC | 実装 |
-|---|---|---|
-| Lighter FR | 暫定 8h | 支払いは毎時だが、API の `rate` は 8h 正規化の可能性が高いので 8h のまま。要実機確認 |
-| Paradex FR | 暫定 8h | ドキュメント上 8h で確定。加えて `/v1/markets` の `funding_period_hours` があれば銘柄ごとに優先 |
-| dYdX FR | 1h（要確認） | ドキュメント上 1h で確定 |
-| Aster fundingInfo | 要確認 | 存在する（ドキュメント記載）。取得に失敗しても全体は止めず、全銘柄 `intervalHours` 扱いにする |
-| 間隔の優先順位 | config で上書き | Aster / Paradex は「API が返す銘柄ごとの間隔」→「config の intervalHours」の順。それ以外は config の値 |

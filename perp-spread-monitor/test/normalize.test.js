@@ -23,3 +23,12 @@ test('その他の表記', () => {
   assert.equal(normalizeSymbol('kaito'), 'KAITO');
   assert.equal(normalizeSymbol('KAITO'), 'KAITO');
 });
+
+test('追加DEXの表記', () => {
+  assert.equal(normalizeSymbol('BTC-PERP_USDT0'), 'BTC'); // Nado
+  assert.equal(normalizeSymbol('kPEPE-PERP_USDT0'), '1000PEPE'); // Nado
+  assert.equal(normalizeSymbol('BTC-USD.P'), 'BTC'); // Ondo Perps
+  assert.equal(normalizeSymbol('BTC/USD'), 'BTC'); // Decibel
+  assert.equal(normalizeSymbol('kPEPEUSDT'), '1000PEPE'); // PopDEX
+  assert.equal(normalizeSymbol('1000BONK-USD'), '1000BONK'); // SoDEX
+});

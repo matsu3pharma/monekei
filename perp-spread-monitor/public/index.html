@@ -272,8 +272,11 @@
     var rows = entries.map(function (e) {
       var h = isNum(e.fundingHourly) ? e.fundingHourly * 100 : null;
       var apr = isNum(e.fundingHourly) ? e.fundingHourly * 24 * 365 * 100 : null;
-      var rawFr = isNum(e.fundingRaw) ? (e.fundingRaw * 100).toFixed(4) + '% / ' + e.intervalHours + 'h' : '—';
-      return '<tr><td class="l">' + label(e.dex) + '</td><td class="l">' + esc(e.raw) + '</td>' +
+      var rawFr = !isNum(e.fundingRaw) ? '—'
+        : e.intervalHours === 8760 ? (e.fundingRaw * 100).toFixed(2) + '% / 年率'
+        : (e.fundingRaw * 100).toFixed(4) + '% / ' + e.intervalHours + 'h';
+      var note = e.outlier ? ' <span class="muted" title="価格が他のDEXと大きく違うため、同名の別銘柄とみなして比較から除外">（別物？除外）</span>' : '';
+      return '<tr' + (e.outlier ? ' class="muted"' : '') + '><td class="l">' + label(e.dex) + note + '</td><td class="l">' + esc(e.raw) + '</td>' +
         '<td>' + price(e.price) + '</td>' +
         '<td>' + signedPct(h, 5) + '</td><td>' + signedPct(apr, 1) + '</td>' +
         '<td class="muted">' + rawFr + '</td>' +

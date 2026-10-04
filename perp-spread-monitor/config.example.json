@@ -6,7 +6,15 @@
     "dydx":        { "enabled": true, "intervalHours": 1 },
     "aster":       { "enabled": true, "intervalHours": 8 },
     "lighter":     { "enabled": true, "intervalHours": 8 },
-    "paradex":     { "enabled": true, "intervalHours": 8 }
+    "paradex":     { "enabled": true, "intervalHours": 8 },
+    "variational": { "enabled": true, "intervalHours": 8760 },
+    "nado":        { "enabled": true, "intervalHours": 24 },
+    "arcus":       { "enabled": true, "intervalHours": 1 },
+    "bulk":        { "enabled": true, "intervalHours": 1 },
+    "ondo":        { "enabled": true, "intervalHours": 1 },
+    "sodex":       { "enabled": true, "intervalHours": 1 },
+    "popdex":      { "enabled": true, "intervalHours": 1 },
+    "decibel":     { "enabled": false, "intervalHours": 1, "apiKey": "" }
   },
   "alert": {
     "frSpreadAprPct": 30,

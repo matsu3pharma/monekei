@@ -126,3 +126,34 @@ test('クールダウン中は同じアラートを繰り返さない', () => {
   const other = [{ ...cands[0], key: 'fr|ETH|c|b' }];
   assert.equal(applyCooldown(other, state, t0 + 31 * 60000, 30).length, 1);
 });
+
+test('3つ以上のDEXで1つだけ価格が大きく違うときは、その1つだけを比較から外す', () => {
+  // 仮想通貨の QNT と、別DEXの株式 QNT（Quantinuum）のようなケース
+  const byDex = {
+    a: [row('QNT', 258.5, 0.0004, 1, 5e6)],
+    b: [row('QNT', 258.4, -0.0004, 1, 5e6)],
+    c: [row('QNT', 46.5, 0.01, 1, 5e6)],
+  };
+  const [r] = compare(byDex, { alert: ALERT, maxPriceRatioSanity: 1.2 });
+  assert.equal(r.suspicious, false);
+  assert.equal(r.dexCount, 2);
+  assert.equal(r.entries.length, 3);
+  assert.equal(r.entries.find((e) => e.dex === 'c').outlier, true);
+  assert.equal(r.fr.shortOn, 'a');
+  assert.equal(r.fr.longOn, 'b');
+  assert.ok(r.price.pct < 0.1);
+  assert.equal(r.alert.fr, true);
+});
+
+test('2つずつに割れていて本物が決められないときは従来どおり suspicious', () => {
+  const byDex = {
+    a: [row('XYZ', 1, 0, 1)],
+    b: [row('XYZ', 1.01, 0, 1)],
+    c: [row('XYZ', 100, 0, 1)],
+    d: [row('XYZ', 101, 0, 1)],
+  };
+  const [r] = compare(byDex, { alert: ALERT, maxPriceRatioSanity: 1.2 });
+  assert.equal(r.suspicious, true);
+  assert.equal(r.dexCount, 4);
+  assert.ok(r.entries.every((e) => !e.outlier));
+});

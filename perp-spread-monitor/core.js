@@ -35,7 +35,7 @@ function compare(byDex, opts = {}) {
   const results = [];
   for (const [symbol, g] of groups) {
     if (g.size < 2) continue; // 2つ以上のDEXに上場している銘柄だけ
-    const entries = [...g].map(([dex, r]) => ({
+    let entries = [...g].map(([dex, r]) => ({
       dex,
       raw: r.raw,
       price: r.price,
@@ -43,7 +43,18 @@ function compare(byDex, opts = {}) {
       fundingRaw: r.fundingRaw ?? null,
       intervalHours: r.intervalHours ?? null,
       volume24h: r.volume24h ?? null,
+      outlier: false,
     }));
+
+    // 3つ以上のDEXに同名銘柄があるとき、価格が中央値から sanity 倍以上離れたものは
+    // 「同じ名前の別物」（株の QNT と仮想通貨の QNT など）として比較から外す
+    markOutliers(entries, sanity);
+    const all = entries;
+    entries = all.filter((e) => !e.outlier);
+    if (entries.length < 2) {
+      for (const e of all) e.outlier = false;
+      entries = all;
+    }
 
     // FR乖離
     let fr = null;
@@ -88,7 +99,7 @@ function compare(byDex, opts = {}) {
     const result = {
       symbol,
       dexCount: entries.length,
-      entries,
+      entries: all,
       fr,
       price,
       suspicious: !!(price && price.suspicious),
@@ -100,6 +111,18 @@ function compare(byDex, opts = {}) {
 
   results.sort((a, b) => (b.fr ? b.fr.aprPct : -Infinity) - (a.fr ? a.fr.aprPct : -Infinity));
   return results;
+}
+
+function markOutliers(entries, sanity) {
+  const ps = entries.map((e) => e.price).filter((p) => isNum(p) && p > 0).sort((a, b) => a - b);
+  if (ps.length < 3) return;
+  const mid = ps.length >> 1;
+  const median = ps.length % 2 ? ps[mid] : Math.sqrt(ps[mid - 1] * ps[mid]);
+  for (const e of entries) {
+    if (!(isNum(e.price) && e.price > 0)) continue;
+    const ratio = e.price > median ? e.price / median : median / e.price;
+    if (ratio >= sanity) e.outlier = true;
+  }
 }
 
 function volumeOk(result, minVolume) {
