@@ -8,7 +8,7 @@ const vm = require('node:vm');
 const html = fs.readFileSync(path.join(__dirname, '..', 'perp-dex-scout.html'), 'utf8');
 const core = html.split('// ==CORE START==')[1].split('// ==CORE END==')[0];
 const ctx = { URL };
-vm.runInNewContext(core + '\nObject.assign(this, { DEFAULT_CONFIG, mergeItems, classify, parseDefiLlamaProtocols, parseRaises, parseGithubPulls, parseHyperliquid, parseRssItems, safetyChecks, normalizeName, extractNameFromHeadline });', ctx);
+vm.runInNewContext(core + '\nObject.assign(this, { DEFAULT_CONFIG, mergeItems, classify, parseDefiLlamaProtocols, parseRaises, parseGithubPulls, parseHyperliquid, parseRssItems, parseHacks, safetyChecks, normalizeName, extractNameFromHeadline });', ctx);
 const { DEFAULT_CONFIG: cfg } = ctx;
 const NOW = Date.parse('2026-10-04T12:00:00Z');
 const json = x => JSON.parse(JSON.stringify(x));
@@ -128,9 +128,54 @@ test('各情報源のパーサー', () => {
 test('安全チェック', () => {
   const [m] = ctx.mergeItems([{ name: 'Zeta', source: 'github', sourceUrl: 'a', url: 'https://zeta.trade', twitter: 'zetaperps' }], []);
   const c = ctx.safetyChecks(m);
-  assert.ok(c.some(x => x.ok && /公式サイトと公式X/.test(x.text)));
-  assert.ok(c.some(x => !x.ok && /出典が1つ/.test(x.text)));
+  assert.ok(c.some(x => x.level === 'ok' && /公式サイトと公式X/.test(x.text)));
+  assert.ok(c.some(x => x.level === 'warn' && /出典が1つ/.test(x.text)));
   assert.ok(!c.some(x => /食い違う/.test(x.text)));
   const [bad] = ctx.mergeItems([{ name: 'Zeta', source: 'github', sourceUrl: 'a', url: 'https://totally-other.com', twitter: 'scammer' }], []);
   assert.ok(ctx.safetyChecks(bad).some(x => /食い違う/.test(x.text)));
+});
+
+test('掲載済みでもTVL$0・監査0・掲載直後は警告する', () => {
+  const dl = ctx.parseDefiLlamaProtocols([
+    { id: '9001', name: 'GDEX Perps', slug: 'gdex-perps', category: 'Derivatives', listedAt: daysAgo(2) / 1000, twitter: 'gemach_io', audits: '0', tvl: 0, chains: ['Base'] },
+    { id: '9002', name: 'Solid', slug: 'solid', category: 'Derivatives', listedAt: daysAgo(400) / 1000, url: 'https://solid.xyz', twitter: 'solid', audits: '2', tvl: 5e7, audit_links: ['https://auditor.example/solid.pdf'] },
+  ], { ...cfg, lookbackDays: 1000 }, NOW);
+  const merged = ctx.mergeItems(dl.items, dl.index, []);
+  const g = ctx.safetyChecks(merged.find(m => m.name === 'GDEX Perps'), cfg, NOW).map(c => c.text).join('|');
+  assert.match(g, /監査の記録がない/);
+  assert.match(g, /TVLが\$0/);
+  assert.match(g, /掲載から2日/);
+  const solid = merged.find(m => m.name === 'Solid');
+  const s2 = ctx.safetyChecks(solid, cfg, NOW).map(c => c.text).join('|');
+  assert.doesNotMatch(s2, /監査の記録がない|TVL|掲載から/);
+  assert.strictEqual(solid.listed.auditLinks[0], 'https://auditor.example/solid.pdf');
+});
+
+test('ハッキング記録と名前またはIDが一致したら🚨を出す', () => {
+  const hacks = ctx.parseHacks([
+    { name: 'Zeta Perps', date: daysAgo(100) / 1000, amount: 12e6, technique: 'Oracle manipulation', source: 'https://rekt.example/zeta' },
+    { name: 'Renamed Old Name', defillamaId: 9002, date: daysAgo(50) / 1000, amount: 1e6 },
+  ]);
+  const dl = ctx.parseDefiLlamaProtocols([{ id: 9002, name: 'Solid', category: 'Derivatives', listedAt: daysAgo(400) / 1000 }], cfg, NOW);
+  const merged = ctx.mergeItems([
+    { name: 'Zeta', source: 'news', sourceUrl: 'n1' }, { name: 'Zeta Perps DEX', source: 'raises', sourceUrl: 'r1' },
+    { name: 'Solid', source: 'news', sourceUrl: 'n2' },
+    { name: 'Clean', source: 'news', sourceUrl: 'n3' },
+  ], dl.index, hacks);
+  const by = n => merged.find(m => m.name === n);
+  assert.strictEqual(by('Zeta Perps DEX').hacks.length, 1);
+  assert.ok(ctx.safetyChecks(by('Zeta Perps DEX'), cfg, NOW).some(c => c.level === 'danger' && /\$12\.0M/.test(c.text)));
+  assert.strictEqual(by('Solid').hacks.length, 1);
+  assert.strictEqual(by('Clean').hacks.length, 0);
+});
+
+test('案件名が取れない一般ニュースは除外し、ローンチ系の記事は残す', () => {
+  const d = new Date(daysAgo(1)).toUTCString();
+  const items = ctx.parseRssItems([
+    { title: 'Hyperliquid Policy Center, Circle press EU on perps and stablecoin reserves in MiCA review', link: 'https://a/1', pubDate: d },
+    { title: 'Perps volumes hit record as traders pile in', link: 'https://a/2', pubDate: d },
+    { title: 'A new perpetuals exchange on Base opens waitlist ahead of mainnet', link: 'https://a/3', pubDate: d },
+    { title: 'Foo launches perp DEX on Solana', link: 'https://a/4', pubDate: d },
+  ], 'https://www.theblock.co/rss.xml', cfg, NOW);
+  assert.deepStrictEqual(json(items.map(i => i.sourceUrl)), ['https://a/3', 'https://a/4']);
 });

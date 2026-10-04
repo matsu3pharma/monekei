@@ -19,9 +19,20 @@
 | DefiLlama 資金調達 | デリバティブ／perp 系の調達 |
 | DefiLlama-Adapters (GitHub) | 掲載申請の Pull Request（perp / derivatives を含むもの） |
 | Hyperliquid HIP-3 | `perpDexs` で取得し、前回との差分を新着にする |
-| ニュース RSS | The Block、CoinDesk、Cointelegraph、Decrypt、The Defiant |
+| DefiLlama ハッキング記録 | 名前・IDが一致した案件に 🚨 を表示 |
+| ニュース RSS | The Block、CoinDesk、Cointelegraph、Decrypt、The Defiant（案件名が取れず、ローンチ・調達などの語もない一般記事は除外） |
 
 ニュースの RSS はブラウザから直接読めないため、公開の中継サービス（allorigins、corsproxy.io、rss2json）を順に試します。混み合って失敗した情報源は画面下に表示されます。
+
+## 安全チェックの見方
+
+DefiLlama 掲載は「実在して資金の動きが追える」という最低ラインで、安全の保証ではありません。カードには次の警告が出ます。
+
+- 🚨 ハッキング被害の記録あり
+- ⚠️ 監査の記録がない／TVL が $0 または少ない（初期設定 $100K 未満）／DefiLlama 掲載から30日未満
+- ⚠️ 出典が1つしかない／公式リンクがない／ドメインと公式Xが食い違う
+
+監査報告書のリンクが DefiLlama にあれば、カードに表示します。
 
 ## 設定
 

@@ -55,6 +55,8 @@ header h1 { font-size: 18px; margin: 0 0 4px; }
 .links .dom { font-weight: 700; color: var(--text); }
 .checks { margin-top: 8px; font-size: 13px; display: grid; gap: 2px; }
 .checks .ok { color: var(--ok); } .checks .warn { color: var(--warn); }
+.checks .danger { color: var(--new); font-weight: 700; }
+.card.hacked { border-color: var(--new); border-width: 2px; }
 .actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
 .actions .btn { padding: 5px 12px; font-size: 13px; }
 .btn.on { background: #f5c518; color: #1b1f24; border-color: #f5c518; }
@@ -154,15 +156,19 @@ const DEFAULT_CONFIG = {
     'BingX', 'Bitfinex', 'BitMEX', 'Deribit', 'Crypto.com', 'Upbit', 'Bithumb', 'Robinhood', 'CME', 'Kalshi', 'Polymarket',
     'Lyra', 'Derive', 'Premia', 'Dopex', 'Stryke', 'Panoptic', 'Hegic', 'Typus', 'Opyn', 'Ribbon',
   ],
+  tvlWarnUsd: 100000,      // これ未満のTVLは「少ない」と警告する
+  newListingDays: 30,      // DefiLlama掲載からこの日数未満は「掲載直後」と警告する
   hyperliquidTestnet: false, // trueにするとHyperliquidテストネットのHIP-3も調べる（試験的なものが多い）
 };
 
 const STAGES = ['unknown', 'waitlist', 'testnet', 'mainnet'];
 const STAGE_JA = { unknown: '段階不明', waitlist: 'ウェイトリスト', testnet: 'テストネット', mainnet: 'メインネット' };
-const SOURCE_JA = { defillama: 'DefiLlama', github: 'DefiLlama-Adapters (GitHub)', raises: 'DefiLlama 資金調達', hyperliquid: 'Hyperliquid HIP-3', news: 'ニュース' };
+const SOURCE_JA = { hacks: 'DefiLlama ハッキング記録', defillama: 'DefiLlama', github: 'DefiLlama-Adapters (GitHub)', raises: 'DefiLlama 資金調達', hyperliquid: 'Hyperliquid HIP-3', news: 'ニュース' };
 const SOURCE_PRIORITY = ['defillama', 'github', 'raises', 'hyperliquid', 'news'];
 const SHARED_HOSTS = ['github.com', 'twitter.com', 'x.com', 'medium.com', 't.me', 'linktr.ee', 'gitbook.io', 'notion.site', 'vercel.app', 'netlify.app', 'github.io', 'mirror.xyz', 'discord.gg', 'discord.com', 'youtube.com', 'google.com', 'substack.com', 'paragraph.xyz', 'defillama.com', 'hyperliquid.xyz'];
 const CHAIN_NAMES = ['Hyperliquid', 'Arbitrum', 'Base', 'Solana', 'Ethereum', 'BNB Chain', 'BSC', 'Sui', 'Aptos', 'Starknet', 'Sei', 'Monad', 'Berachain', 'MegaETH', 'Flare', 'Injective', 'Blast', 'zkSync', 'Avalanche', 'TON', 'Sonic', 'Optimism', 'Polygon', 'Linea', 'Scroll', 'Mantle', 'Plasma', 'Movement', 'Abstract', 'Unichain', 'Ink'];
+// 案件名が取れない記事は、これらの語を含むときだけ残す（一般ニュースを除くため）
+const LAUNCH_WORDS = ['launch', 'launches', 'launched', 'debut', 'unveil', 'introduc', 'rolls out', 'goes live', 'go live', 'testnet', 'mainnet', 'waitlist', 'points program', 'airdrop', 'raise', 'seed round', 'funding round', 'backed', 'new perp', 'new perpetual'];
 const NAME_STOPWORDS = ['bitcoin', 'ethereum', 'solana', 'crypto', 'defi', 'the', 'sec', 'us', 'trump', 'this', 'why', 'how', 'what', 'new', 'a', 'an', 'cftc', 'report', 'exclusive', 'breaking'];
 
 function escapeRe(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
@@ -295,7 +301,8 @@ function parseDefiLlamaProtocols(data, cfg, now) {
   const deriv = (Array.isArray(data) ? data : []).filter(p => p && cats.includes(String(p.category || '').toLowerCase()));
   // 掲載済みかどうかの照合用（軽い形だけ残す）
   const index = deriv.map(p => ({
-    name: p.name, slug: p.slug, url: cleanUrl(p.url), twitter: normalizeTwitter(p.twitter),
+    id: p.id != null ? String(p.id) : '', name: p.name,
+    auditLinks: (Array.isArray(p.audit_links) ? p.audit_links : []).map(cleanUrl).filter(Boolean).slice(0, 5), slug: p.slug, url: cleanUrl(p.url), twitter: normalizeTwitter(p.twitter),
     audits: Number(p.audits || 0), tvl: Number(p.tvl || 0), chains: p.chains || (p.chain ? [p.chain] : []),
     listedAt: p.listedAt ? p.listedAt * 1000 : null, category: p.category,
   }));
@@ -309,7 +316,7 @@ function parseDefiLlamaProtocols(data, cfg, now) {
     sourceUrl: p.slug ? `https://defillama.com/protocol/${p.slug}` : 'https://defillama.com/',
     detectedAt: p.listedAt,
     descJa: `DefiLlamaに掲載（${fmtDate(p.listedAt).slice(0, 10)}、カテゴリ: ${p.category}、TVL ${fmtUsd(p.tvl)}、監査 ${p.audits}件）`,
-    listed: { audits: p.audits, tvl: p.tvl },
+    listed: { audits: p.audits, tvl: p.tvl, listedAt: p.listedAt, auditLinks: p.auditLinks, id: p.id },
   }));
   return { items, index };
 }
@@ -407,6 +414,18 @@ function parseHyperliquid(data, network) {
   }));
 }
 
+function parseHacks(data) {
+  return (Array.isArray(data) ? data : []).filter(h => h && h.name).map(h => ({
+    name: h.name,
+    id: h.defillamaId != null ? String(h.defillamaId) : '',
+    date: h.date ? h.date * 1000 : null,
+    amount: Number(h.amount) || 0,
+    technique: h.technique || h.classification || '',
+    returned: Number(h.returnedFunds) || 0,
+    source: cleanUrl(h.source),
+  }));
+}
+
 function parseRssItems(items, feedUrl, cfg, now) {
   const since = now - cfg.lookbackDays * 864e5;
   const site = hostOf(feedUrl);
@@ -416,6 +435,7 @@ function parseRssItems(items, feedUrl, cfg, now) {
     .map(it => {
       const text = it.title + ' ' + (it.description || '');
       const extracted = extractNameFromHeadline(it.title);
+      if (!extracted && !hasKeyword(it.title, [...LAUNCH_WORDS, ...(cfg.signalKeywords || [])])) return null;
       const topics = detectTopicsJa(text);
       const date = it.date && !isNaN(it.date) ? it.date : null;
       return {
@@ -431,7 +451,7 @@ function parseRssItems(items, feedUrl, cfg, now) {
         descJa: `${site}の記事${date ? `（${fmtDate(date).slice(0, 10)}）` : ''}` + (topics.length ? `：話題 ${topics.join('・')}` : ''),
         original: { title: it.title, link: it.link },
       };
-    });
+    }).filter(Boolean);
 }
 
 // ---- 同じ案件をまとめる ----
@@ -444,7 +464,7 @@ function itemKeys(it) {
   return keys;
 }
 
-function mergeItems(rawItems, index) {
+function mergeItems(rawItems, index, hacks) {
   const parent = rawItems.map((_, i) => i);
   const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
   const owner = {};
@@ -460,6 +480,12 @@ function mergeItems(rawItems, index) {
   const idx = {};
   for (const p of index || []) {
     for (const k of itemKeys({ name: p.name, twitter: p.twitter, url: p.url })) if (!idx[k]) idx[k] = p;
+  }
+
+  // ハッキング記録の索引（名前とDefiLlamaのIDで照合）
+  const hackIdx = {};
+  for (const h of hacks || []) {
+    for (const k of ['n:' + normalizeName(h.name), h.id ? 'id:' + h.id : '']) if (k && k !== 'n:') (hackIdx[k] = hackIdx[k] || []).push(h);
   }
 
   return Object.values(groups).map(group => {
@@ -489,7 +515,7 @@ function mergeItems(rawItems, index) {
     if (!m.listed) {
       const hit = group.flatMap(itemKeys).map(k => idx[k]).find(Boolean);
       if (hit) {
-        m.listed = { audits: hit.audits, tvl: hit.tvl };
+        m.listed = { audits: hit.audits, tvl: hit.tvl, listedAt: hit.listedAt, auditLinks: hit.auditLinks, id: hit.id };
         if (!m.url) m.url = hit.url;
         if (!m.twitter) m.twitter = hit.twitter;
         if (m.headline) { m.name = hit.name; m.headline = false; }
@@ -501,6 +527,8 @@ function mergeItems(rawItems, index) {
         m.descs.push(`DefiLlamaに掲載済み（${hit.listedAt ? fmtDate(hit.listedAt).slice(0, 10) + '掲載、' : ''}TVL ${fmtUsd(hit.tvl)}、監査 ${hit.audits}件）`);
       }
     }
+    const hackKeys = [...new Set([...group.flatMap(itemKeys), 'n:' + normalizeName(m.name), m.listed && m.listed.id ? 'id:' + m.listed.id : ''])];
+    m.hacks = [...new Map(hackKeys.flatMap(k => hackIdx[k] || []).map(h => [h.name + h.date, h])).values()].sort((a, b) => (b.date || 0) - (a.date || 0));
     m.aliases = [...new Set([...group.flatMap(itemKeys), ...itemKeys({ name: m.name, twitter: m.twitter, url: m.url, headline: m.headline })])];
     m.key = m.aliases.find(k => k.startsWith('n:')) || m.aliases[0];
     m.sourceCount = new Set(m.sources.map(s => s.source + '|' + (s.source === 'news' ? hostOf(s.sourceUrl) : ''))).size;
@@ -509,19 +537,37 @@ function mergeItems(rawItems, index) {
 }
 
 // ---- 安全チェック ----
-function safetyChecks(m) {
+function safetyChecks(m, cfg, now) {
+  cfg = cfg || DEFAULT_CONFIG;
+  now = now || Date.now();
   const out = [];
+  const ok = text => out.push({ level: 'ok', text });
+  const warn = text => out.push({ level: 'warn', text });
+  const danger = text => out.push({ level: 'danger', text });
   const rel = (a, b) => a && b && a.length >= 3 && b.length >= 3 && (a.includes(b) || b.includes(a));
-  if (m.url && m.twitter) out.push({ ok: true, text: '公式サイトと公式Xが出典から確認できた' });
-  if (m.listed) out.push({ ok: true, text: `DefiLlamaに掲載済み（監査 ${m.listed.audits}件）` });
-  if (m.raises && m.raises.length) out.push({ ok: true, text: '資金調達の記録がある' });
-  if (m.sourceCount <= 1) out.push({ ok: false, text: '出典が1つしかない' });
-  if (!m.url || !m.twitter) out.push({ ok: false, text: '公式リンクがない' + (!m.url && !m.twitter ? '' : !m.url ? '（サイト）' : '（X）') });
+  for (const h of m.hacks || []) {
+    danger(`ハッキング被害の記録あり：${h.date ? fmtDate(h.date).slice(0, 10) : '日付不明'} ${h.amount ? fmtUsd(h.amount) : '金額不明'}の被害` + (h.technique ? `（${h.technique}）` : '') + (h.returned ? `、うち${fmtUsd(h.returned)}返還` : ''));
+  }
+  if (m.url && m.twitter) ok('公式サイトと公式Xが出典から確認できた');
+  if (m.listed) {
+    const audits = Number(m.listed.audits) || 0;
+    ok(`DefiLlamaに掲載済み（監査 ${audits}件）`);
+    if (!audits) warn('監査の記録がない（DefiLlama上の監査0件）');
+    const tvl = Number(m.listed.tvl) || 0;
+    if (!tvl) warn('TVLが$0（まだほとんど誰も預けていない）');
+    else if (tvl < (cfg.tvlWarnUsd || 0)) warn(`TVLが少ない（${fmtUsd(tvl)}）`);
+    if (m.listed.listedAt && now - m.listed.listedAt < (cfg.newListingDays || 30) * 864e5) {
+      warn(`DefiLlama掲載から${Math.max(0, Math.floor((now - m.listed.listedAt) / 864e5))}日（実績がまだ短い）`);
+    }
+  }
+  if (m.raises && m.raises.length) ok('資金調達の記録がある');
+  if (m.sourceCount <= 1) warn('出典が1つしかない');
+  if (!m.url || !m.twitter) warn('公式リンクがない' + (!m.url && !m.twitter ? '' : !m.url ? '（サイト）' : '（X）'));
   if (m.url && m.twitter) {
     const dom = (baseDomain(m.url) || hostOf(m.url)).split('.')[0].replace(/[^a-z0-9]/g, '');
     const handle = m.twitter.replace(/_?(xyz|fi|dex|protocol|app|io|labs|exchange|official|hq|trade|finance|network|perps?)$/i, '').replace(/[^a-z0-9]/g, '');
     const name = normalizeName(m.name);
-    if (!(rel(dom, handle) || (rel(dom, name) && rel(handle, name)))) out.push({ ok: false, text: `ドメイン（${hostOf(m.url)}）と公式X（@${m.twitter}）の名前が食い違う` });
+    if (!(rel(dom, handle) || (rel(dom, name) && rel(handle, name)))) warn(`ドメイン（${hostOf(m.url)}）と公式X（@${m.twitter}）の名前が食い違う`);
   }
   return out;
 }
@@ -629,6 +675,10 @@ const SOURCES = [
     const res = await fetchWithTimeout('https://api.llama.fi/protocols', {}, cfg.timeoutMs);
     return parseDefiLlamaProtocols(await res.json(), cfg, now);
   } },
+  { id: 'hacks', label: 'DefiLlama ハッキング記録', run: async (cfg) => {
+    const res = await fetchWithTimeout('https://api.llama.fi/hacks', {}, cfg.timeoutMs);
+    return { items: [], hacks: parseHacks(await res.json()) };
+  } },
   { id: 'raises', label: 'DefiLlama 資金調達', run: async (cfg, now) => {
     const res = await fetchWithTimeout('https://api.llama.fi/raises', {}, cfg.timeoutMs);
     return { items: parseRaises(await res.json(), cfg, now) };
@@ -681,7 +731,7 @@ async function runCheck(force) {
     SOURCES.forEach((s, i) => {
       const r = settled[i];
       raw[s.id] = r.status === 'fulfilled'
-        ? { ok: true, items: r.value.items, index: r.value.index, partialFail: r.value.partialFail }
+        ? { ok: true, items: r.value.items, index: r.value.index, hacks: r.value.hacks, partialFail: r.value.partialFail }
         : { ok: false, error: String(r.reason && r.reason.message || r.reason) };
     });
     store.cache = { ts: now, raw, configSig: JSON.stringify(cfg) };
@@ -689,7 +739,8 @@ async function runCheck(force) {
   }
   const all = Object.values(raw).filter(r => r.ok).flatMap(r => r.items || []);
   const index = raw.defillama && raw.defillama.ok ? raw.defillama.index : [];
-  const merged = mergeItems(all, index);
+  const hacks = raw.hacks && raw.hacks.ok ? raw.hacks.hacks : [];
+  const merged = mergeItems(all, index, hacks);
   const prevCheck = store.lastCheck || null;
   const result = classify(merged, { lastCheck: store.lastCheck, known: store.known, hidden: store.hidden }, now, cfg);
   store.known = result.state.known;
@@ -745,16 +796,19 @@ function renderCard(it) {
       /^https?:/.test(o.link || '') && !/github\.com/.test(o.link) ? [' ', safeLink('https://translate.google.com/translate?sl=auto&tl=ja&u=' + encodeURIComponent(o.link), '[日本語で読む]')] : null)));
   const links = el('div', { class: 'links' },
     it.url ? el('div', {}, '公式サイト: ', el('span', { class: 'dom' }, hostOf(it.url)), ' ', safeLink(it.url, '↗')) : null,
+    ...((it.listed && it.listed.auditLinks) || []).slice(0, 3).map(a => el('div', {}, '監査報告書: ', el('span', { class: 'dom' }, hostOf(a)), ' ', safeLink(a, '↗'))),
+    ...(it.hacks || []).filter(h => h.source).slice(0, 2).map(h => el('div', {}, 'ハッキング記録の出典: ', el('span', { class: 'dom' }, hostOf(h.source)), ' ', safeLink(h.source, '↗'))),
     it.twitter ? el('div', {}, '公式X: ', el('span', { class: 'dom' }, '@' + it.twitter), ' ', safeLink('https://x.com/' + it.twitter, '↗')) : null,
     el('div', {}, '出典: ', ...it.sources.flatMap((s, i) => [i ? ' ／ ' : '', safeLink(s.sourceUrl, `${SOURCE_JA[s.source]}（${hostOf(s.sourceUrl)}）`)])),
   );
-  const checks = el('div', { class: 'checks' }, ...safetyChecks(it).map(c => el('div', { class: c.ok ? 'ok' : 'warn' }, (c.ok ? '✅ ' : '⚠️ ') + c.text)));
+  const icon = { ok: '✅ ', warn: '⚠️ ', danger: '🚨 ' };
+  const checks = el('div', { class: 'checks' }, ...safetyChecks(it, getConfig(), Date.now()).map(c => el('div', { class: c.level }, icon[c.level] + c.text)));
   const starred = !!store.starred[it.key];
   const actions = el('div', { class: 'actions' },
     el('button', { class: 'btn' + (starred ? ' on' : ''), onclick: () => toggleStar(it) }, starred ? '★ 注目中' : '☆ 注目'),
     el('button', { class: 'btn', onclick: () => hideItem(it) }, '興味なし（以後非表示）'),
   );
-  return el('article', { class: 'card' }, head, meta, desc, links, checks, actions);
+  return el('article', { class: 'card' + (it.hacks && it.hacks.length ? ' hacked' : '') }, head, meta, desc, links, checks, actions);
 }
 
 function toggleStar(it) {
