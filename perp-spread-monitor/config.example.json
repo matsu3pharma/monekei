@@ -21,7 +21,8 @@
     "priceSpreadPct": 0.5,
     "minVolume24hUsd": 1000000,
     "cooldownMinutes": 30,
-    "maxPriceRatioSanity": 1.2
+    "maxPriceRatioSanity": 1.2,
+    "minDurationMinutes": 0
   },
   "watchlist": [],
   "notify": {

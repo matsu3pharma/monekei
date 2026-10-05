@@ -27,3 +27,12 @@ test('価格付きの通知文', () => {
   const p = formatAlert({ type: 'price', symbol: 'BTC', pricePct: 0.5, highOn: 'lighter', lowOn: 'dydx', highPrice: 85512.34, lowPrice: 85087 }, LABELS);
   assert.equal(p.split('\n')[1], '  高い: Lighter（85,512.3） / 安い: dYdX（85,087）');
 });
+
+test('継続時間の表示（1分以上のときだけ）', () => {
+  const base = { type: 'fr', symbol: 'ETH', aprPct: 50, hourlyPct: 0.0057, shortOn: 'hyperliquid', longOn: 'dydx', pricePct: 0.1 };
+  assert.equal(formatAlert({ ...base, durationMs: 30000 }, LABELS).split('\n').length, 3);
+  assert.equal(formatAlert({ ...base, durationMs: 15 * 60000 }, LABELS).split('\n')[3], '  継続 15分');
+  const { fmtDuration } = require('../notify');
+  assert.equal(fmtDuration(135 * 60000), '2時間15分');
+  assert.equal(fmtDuration((26 * 60 + 5) * 60000), '1日2時間');
+});

@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { toHourly, compare, alertCandidates, applyCooldown } = require('../core');
+const { toHourly, compare, alertCandidates, applyCooldown, updateStreaks } = require('../core');
 
 const ALERT = {
   frSpreadAprPct: 30,
@@ -217,4 +217,64 @@ test('出来高が足りているDEXが1つしか無ければ通知しない', (
   const [r] = compare(byDex, { alert: ALERT });
   assert.equal(r.liquid, null);
   assert.equal(r.alert.fr, false);
+});
+
+test('差が続いている時間: 同じ組み合わせでしきい値以上なら伸び、組み合わせが変わるか下回るとリセット', () => {
+  const state = {};
+  const t0 = 1_000_000_000;
+  const at = (byDex, t, firstRound = false) => {
+    const res = compare(byDex, { alert: ALERT });
+    updateStreaks(res, state, t, { alert: ALERT, maxGapMs: 120000, firstRound });
+    return res[0];
+  };
+  const wide = { a: [row('ETH', 3000, 0.0001, 1)], b: [row('ETH', 3000, -0.0001, 1)] }; // 年率 175%
+  let r = at(wide, t0, true);
+  assert.equal(r.fr.streak.durationMs, 0);
+  assert.equal(r.fr.streak.fromStart, true);
+  r = at(wide, t0 + 30000);
+  r = at(wide, t0 + 60000);
+  assert.equal(r.fr.streak.durationMs, 60000);
+  assert.equal(r.fr.streak.samples, 3);
+  close(r.fr.streak.avg, r.fr.aprPct);
+  assert.equal(r.liquid.fr.streak.durationMs, 60000);
+
+  // 組み合わせが逆になったら最初から
+  const flipped = { a: [row('ETH', 3000, -0.0001, 1)], b: [row('ETH', 3000, 0.0001, 1)] };
+  r = at(flipped, t0 + 90000);
+  assert.equal(r.fr.streak.durationMs, 0);
+  assert.equal(r.fr.streak.fromStart, false);
+
+  // しきい値を下回ったら消える
+  const narrow = { a: [row('ETH', 3000, 0.000001, 1)], b: [row('ETH', 3000, 0, 1)] };
+  r = at(narrow, t0 + 120000);
+  assert.equal(r.fr.streak, undefined);
+  assert.equal(Object.keys(state).filter((k) => k.includes('|fr|')).length, 0);
+});
+
+test('差が続いている時間: 観測が空きすぎたら連続とみなさない', () => {
+  const state = {};
+  const byDex = { a: [row('ETH', 3000, 0.0001, 1)], b: [row('ETH', 3000, -0.0001, 1)] };
+  const run = (t) => {
+    const res = compare(byDex, { alert: ALERT });
+    updateStreaks(res, state, t, { alert: ALERT, maxGapMs: 120000 });
+    return res[0];
+  };
+  run(0);
+  assert.equal(run(100000).fr.streak.durationMs, 100000);
+  assert.equal(run(100000 + 200000).fr.streak.durationMs, 0);
+});
+
+test('minDurationMinutes: 差が指定の分数続くまで通知しない', () => {
+  const alert = { ...ALERT, minDurationMinutes: 5 };
+  const state = {};
+  const byDex = { a: [row('ETH', 3000, 0.0001, 1)], b: [row('ETH', 3000, -0.0001, 1)] };
+  const run = (t) => {
+    const res = compare(byDex, { alert });
+    updateStreaks(res, state, t, { alert, maxGapMs: 120000 });
+    return res;
+  };
+  for (let t = 0; t < 5 * 60000; t += 60000) assert.equal(alertCandidates(run(t)).length, 0);
+  const c = alertCandidates(run(5 * 60000));
+  assert.equal(c.length, 1);
+  assert.equal(c[0].durationMs, 5 * 60000);
 });

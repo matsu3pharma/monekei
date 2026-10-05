@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const http = require('http');
 const { ADAPTERS, normalizeSymbol, makeFetchJson } = require('./exchanges');
-const { compare, alertCandidates, applyCooldown } = require('./core');
+const { compare, alertCandidates, applyCooldown, updateStreaks } = require('./core');
 const { formatAlert, notifyAll } = require('./notify');
 const { readResource } = require('./resources');
 const desktop = require('./desktop');
@@ -27,6 +27,7 @@ const DEFAULTS = {
     minVolume24hUsd: 1000000,
     cooldownMinutes: 30,
     maxPriceRatioSanity: 1.2,
+    minDurationMinutes: 0,
   },
   watchlist: [],
   notify: { discordWebhookUrl: '', telegramBotToken: '', telegramChatId: '' },
@@ -85,6 +86,20 @@ function loadDefaults() {
 const LABELS = Object.fromEntries(Object.entries(ADAPTERS).map(([id, a]) => [id, a.label]));
 const fetchJson = makeFetchJson(15000);
 const lastSent = {};
+
+// 差が続いている時間の記録。再起動しても数分以内なら続きから数えられるよう、設定ファイルの隣に保存する
+const STREAKS_PATH = path.join(path.dirname(CONFIG_PATH), 'streaks.json');
+let streaks = {};
+try {
+  streaks = JSON.parse(fs.readFileSync(STREAKS_PATH, 'utf8')) || {};
+} catch {}
+let firstRound = true;
+
+function saveStreaks() {
+  try {
+    fs.writeFileSync(STREAKS_PATH, JSON.stringify(streaks));
+  } catch {}
+}
 const alertHistory = [];
 let snapshot = {
   updatedAt: null,
@@ -128,6 +143,15 @@ async function poll() {
     maxPriceRatioSanity: cfg.alert.maxPriceRatioSanity,
     alert: cfg.alert,
   });
+
+  // 取得が1〜2回失敗しても途切れないよう、更新間隔の3倍（最低2分）までの空白は連続とみなす
+  updateStreaks(results, streaks, Date.now(), {
+    alert: cfg.alert,
+    maxGapMs: Math.max(120000, cfg.pollSeconds * 3000),
+    firstRound,
+  });
+  firstRound = false;
+  saveStreaks();
 
   const fresh = applyCooldown(alertCandidates(results), lastSent, Date.now(), cfg.alert.cooldownMinutes);
   for (const a of fresh) {

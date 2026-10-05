@@ -13,6 +13,18 @@ function fmtPrice(x) {
   return String(Number(x.toPrecision(4)));
 }
 
+function fmtDuration(ms) {
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${m}分`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}時間${m % 60}分`;
+  return `${Math.floor(h / 24)}日${h % 24}時間`;
+}
+
+function durationLine(a) {
+  return a.durationMs != null && a.durationMs >= 60000 ? [`  継続 ${fmtDuration(a.durationMs)}`] : [];
+}
+
 // labels: { dex: 表示名 }
 function formatAlert(a, labels = {}) {
   const L = (d) => labels[d] || d;
@@ -21,11 +33,13 @@ function formatAlert(a, labels = {}) {
       `【FR乖離】${a.symbol}  年率 ${fmtPct(a.aprPct, 1)}（1h ${fmtPct(a.hourlyPct, 4)}）`,
       `  ${L(a.shortOn)}でショート${a.shortPrice != null ? `（${fmtPrice(a.shortPrice)}）` : ''} / ${L(a.longOn)}でロング${a.longPrice != null ? `（${fmtPrice(a.longPrice)}）` : ''}`,
       `  価格差 ${fmtPct(a.pricePct, 3)}`,
+      ...durationLine(a),
     ].join('\n');
   }
   return [
     `【価格乖離】${a.symbol}  ${fmtPct(a.pricePct, 3)}`,
     `  高い: ${L(a.highOn)}${a.highPrice != null ? `（${fmtPrice(a.highPrice)}）` : ''} / 安い: ${L(a.lowOn)}${a.lowPrice != null ? `（${fmtPrice(a.lowPrice)}）` : ''}`,
+    ...durationLine(a),
   ].join('\n');
 }
 
@@ -65,4 +79,5 @@ async function notifyAll(notifyCfg = {}, text) {
 }
 
 module.exports = {
-  fmtPrice, formatAlert, notifyAll, sendDiscord, sendTelegram };
+  fmtPrice,
+  fmtDuration, formatAlert, notifyAll, sendDiscord, sendTelegram };

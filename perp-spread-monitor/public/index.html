@@ -230,6 +230,25 @@
     return useLiquid() ? r.liquid : r;
   }
 
+  function fmtDuration(ms) {
+    var m = Math.floor(ms / 60000);
+    if (m < 1) return '1分未満';
+    if (m < 60) return m + '分';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + '時間' + (m % 60) + '分';
+    return Math.floor(h / 24) + '日' + (h % 24) + '時間';
+  }
+
+  // 同じDEXの組み合わせのまま、差がしきい値以上で続いている時間と、その間の平均
+  function streakCell(x, digits) {
+    var st = x && x.streak;
+    if (!st) return '<td class="muted" title="しきい値未満">—</td>';
+    var title = (st.fromStart ? 'アプリ起動時にはすでに差があったため、実際はもっと長く続いている可能性があります。' : '') +
+      new Date(st.since).toLocaleString() + ' から';
+    return '<td title="' + esc(title) + '"><div>' + fmtDuration(st.durationMs) + (st.fromStart ? '<span class="muted">以上</span>' : '') +
+      '</div><div class="leg-sub">平均 ' + pct(st.avg, digits) + '</div></td>';
+  }
+
   function legCell(dex, px, hourlyPct) {
     var sub = price(px) + (hourlyPct == null ? '' : ' / ' + signedPct(hourlyPct, 4) + '/h');
     return '<td class="l"><div class="leg-name">' + label(dex) + '</div><div class="leg-sub">' + sub + '</div></td>';
@@ -259,8 +278,8 @@
   }
 
   var HEAD = {
-    fr: ['銘柄', 'FR差年率', 'FR差1h', 'ショート先（価格 / FR）', 'ロング先（価格 / FR）', '2DEX間の価格差', '出来高(小)', '比較DEX数'],
-    price: ['銘柄', '価格差', '高いDEX（価格）', '安いDEX（価格）', 'FR差年率', '出来高(小)', '比較DEX数'],
+    fr: ['銘柄', 'FR差年率', '継続', 'FR差1h', 'ショート先（価格 / FR）', 'ロング先（価格 / FR）', '2DEX間の価格差', '出来高(小)', '比較DEX数'],
+    price: ['銘柄', '価格差', '継続', '高いDEX（価格）', '安いDEX（価格）', 'FR差年率', '出来高(小)', '比較DEX数'],
   };
 
   function symCell(r) {
@@ -277,6 +296,7 @@
       var f = v.fr;
       cells = symCell(r) +
         '<td>' + pct(f.aprPct, 1) + '</td>' +
+        streakCell(f, 1) +
         '<td>' + pct(f.hourlyPct, 4) + '</td>' +
         legCell(f.shortOn, f.shortPrice, f.shortHourlyPct) +
         legCell(f.longOn, f.longPrice, f.longHourlyPct) +
@@ -287,6 +307,7 @@
       var p = v.price;
       cells = symCell(r) +
         '<td>' + pct(p.pct, 3) + '</td>' +
+        streakCell(p, 3) +
         legCell(p.highOn, p.highPrice, null) +
         legCell(p.lowOn, p.lowPrice, null) +
         '<td>' + (v.fr ? pct(v.fr.aprPct, 1) : '—') + '</td>' +
@@ -338,7 +359,7 @@
     $('hint').textContent = (useLiquid()
       ? '出来高フィルタON：24時間出来高が ' + vol(minVol) + ' 以上のDEXどうしで比べています（比較DEX数の右の数字は上場DEX数）。'
       : '出来高フィルタOFF：出来高に関係なく全DEXで比べています。') +
-      ' 行をクリックすると、全DEXの価格・FRが見られます。';
+      ' 「継続」は、同じDEXの組み合わせのまま差がしきい値以上で続いている時間（下はその間の平均）。行をクリックすると、全DEXの価格・FRが見られます。';
     if (!list.length) {
       var msg = s.updatedAt ? '該当する銘柄がありません' : 'データ取得中…';
       $('tbody').innerHTML = '<tr><td class="empty" colspan="' + HEAD[state.tab].length + '">' + msg + '</td></tr>';

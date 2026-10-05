@@ -185,6 +185,7 @@ function alertCandidates(results) {
         longPrice: f.longPrice,
         pricePct: f.pricePct,
         minVolume24h: f.minVolume24h,
+        durationMs: f.streak ? f.streak.durationMs : null,
       });
     }
     if (r.alert.price && v && v.price) {
@@ -200,6 +201,7 @@ function alertCandidates(results) {
         lowPrice: p.lowPrice,
         aprPct: v.fr ? v.fr.aprPct : null,
         minVolume24h: p.minVolume24h,
+        durationMs: p.streak ? p.streak.durationMs : null,
       });
     }
   }
@@ -226,4 +228,57 @@ function applyCooldown(candidates, lastSent, now, cooldownMinutes) {
   return fresh;
 }
 
-module.exports = { toHourly, compare, evaluateAlert, alertCandidates, applyCooldown, HOURS_PER_YEAR };
+// ---------- 差が続いている時間 ----------
+// state: { [key]: { pair, since, lastSeen, sum, n, fromStart } }。この関数が更新する（ファイルに保存して再起動後も引き継げる）。
+// 「同じDEXの組み合わせのまま、差がしきい値以上」が途切れずに続いている間を1つの連続とみなす。
+// opts: { alert, maxGapMs: これより長く観測が空いたら連続とみなさない, firstRound: 起動して最初の取得か }
+// 結果の各 fr / price（と liquid.fr / liquid.price）に streak = { since, durationMs, avg, samples, fromStart } を付ける。
+function updateStreaks(results, state, now, opts = {}) {
+  const alert = opts.alert || {};
+  const maxGapMs = opts.maxGapMs > 0 ? opts.maxGapMs : 120000;
+  const kinds = [
+    ['fr', alert.frSpreadAprPct, (x) => x.aprPct, (x) => `${x.shortOn}>${x.longOn}`],
+    ['price', alert.priceSpreadPct, (x) => x.pct, (x) => `${x.highOn}>${x.lowOn}`],
+  ];
+  for (const r of results) {
+    for (const [viewName, v] of [['all', r], ['liquid', r.liquid]]) {
+      if (!v) continue;
+      for (const [kind, threshold, value, pairOf] of kinds) {
+        const key = `${viewName}|${kind}|${r.symbol}`;
+        const x = v[kind];
+        if (!x || r.suspicious || !(isNum(threshold) && value(x) >= threshold)) {
+          delete state[key];
+          continue;
+        }
+        const pair = pairOf(x);
+        let st = state[key];
+        if (!st || st.pair !== pair || now - st.lastSeen > maxGapMs) {
+          st = state[key] = { pair, since: now, lastSeen: now, sum: 0, n: 0, fromStart: !!opts.firstRound };
+        }
+        st.lastSeen = now;
+        st.sum += value(x);
+        st.n += 1;
+        x.streak = { since: st.since, durationMs: now - st.since, avg: st.sum / st.n, samples: st.n, fromStart: st.fromStart };
+      }
+    }
+  }
+  // DEX の取得失敗などで見えなくなったものは、maxGapMs を過ぎたら捨てる
+  for (const k of Object.keys(state)) {
+    if (now - state[k].lastSeen > maxGapMs) delete state[k];
+  }
+
+  // 通知を「差が minDurationMinutes 分以上続いたもの」に限る（0 なら制限なし）
+  const minMs = Math.max(0, Number(alert.minDurationMinutes) || 0) * 60000;
+  if (minMs > 0) {
+    for (const r of results) {
+      if (!r.alert) continue;
+      const v = r.alert.useLiquid ? r.liquid : r;
+      const long = (x) => !!(x && x.streak && x.streak.durationMs >= minMs);
+      r.alert.fr = r.alert.fr && long(v && v.fr);
+      r.alert.price = r.alert.price && long(v && v.price);
+    }
+  }
+  return state;
+}
+
+module.exports = { toHourly, compare, evaluateAlert, alertCandidates, applyCooldown, updateStreaks, HOURS_PER_YEAR };
