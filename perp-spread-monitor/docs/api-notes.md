@@ -82,7 +82,13 @@ node scripts/check-apis.js
 - **`funding_rate` は年率の小数**。公式ドキュメントには単位の記載が無いが、SOL・DOGE・ZRO などが `0.1095` = 年 10.95% = 基準値ちょうど。BTC `0.0772` は 8h 換算 0.0071% で他DEXと同水準
 - `funding_interval_s` は支払い間隔（3600 / 14400 / 28800）で、レートの単位には関係しない
 - `funding_interval_s = 0` の銘柄（`US100S`, `XAUS` など休止中の RWA、FR=0）は除外
-- 価格は `mark_price`。RFQ 型なので板は無いが `quotes` に bid/ask がある
+- **価格は `quotes.base` の bid/ask の中間値を使う**（2026-10-05 実測）
+  - `mark_price` は数分に1回しか変わらない（6分間の計測で1回だけ更新。同じ間に Hyperliquid の BTC は ±50 ドル動いていた）
+  - `quotes` は約1分ごとに更新され、`quotes.updated_at` で古さが分かる（取得時点で 15〜115 秒前）
+  - レスポンスは Cloudflare のキャッシュ経由（`cache-control: public, s-maxage=60, max-age=30`、`cf-cache-status: HIT`）。公式ドキュメントにも「bid/ask は最大 600 秒キャッシュされることがある」とある
+  - キャッシュを避ける工夫（URL に毎回違うパラメータを付けるなど）はしない。提供側が意図したキャッシュを迂回することになるため
+  - 古さは `priceAgeMs` として持ち、`alert.maxPriceAgeSeconds`（既定 90 秒）より古い価格は価格乖離の判定から外す
+- レート制限: IP あたり 10 リクエスト / 10 秒（30 秒ごと 1 回なので問題なし）
 
 ## Nado
 

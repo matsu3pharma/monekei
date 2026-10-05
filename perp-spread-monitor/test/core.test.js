@@ -278,3 +278,22 @@ test('minDurationMinutes: 差が指定の分数続くまで通知しない', () 
   assert.equal(c.length, 1);
   assert.equal(c[0].durationMs, 5 * 60000);
 });
+
+test('価格が古すぎるDEXは価格乖離の判定に使わない（FRの比較には使う）', () => {
+  const alert = { ...ALERT, maxPriceAgeSeconds: 90 };
+  const stale = { ...row('ETH', 3100, -0.0001, 1), priceAgeMs: 120000 };
+  const byDex = {
+    a: [row('ETH', 3000, 0.0001, 1)],
+    b: [row('ETH', 3001, 0, 1)],
+    v: [stale],
+  };
+  const [r] = compare(byDex, { alert });
+  assert.equal(r.price.highOn, 'b');
+  assert.ok(r.price.pct < 0.1);
+  assert.equal(r.alert.price, false);
+  assert.equal(r.fr.longOn, 'v');
+  // 新しければ使う
+  const [r2] = compare({ ...byDex, v: [{ ...stale, priceAgeMs: 30000 }] }, { alert });
+  assert.equal(r2.price.highOn, 'v');
+  assert.equal(r2.alert.price, true);
+});

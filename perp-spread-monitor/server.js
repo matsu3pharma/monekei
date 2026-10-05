@@ -28,6 +28,7 @@ const DEFAULTS = {
     cooldownMinutes: 30,
     maxPriceRatioSanity: 1.2,
     minDurationMinutes: 0,
+    maxPriceAgeSeconds: 90,
   },
   watchlist: [],
   notify: { discordWebhookUrl: '', telegramBotToken: '', telegramChatId: '' },

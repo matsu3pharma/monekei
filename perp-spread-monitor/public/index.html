@@ -245,12 +245,14 @@
     if (!st) return '<td class="muted" title="しきい値未満">—</td>';
     var title = (st.fromStart ? 'アプリ起動時にはすでに差があったため、実際はもっと長く続いている可能性があります。' : '') +
       new Date(st.since).toLocaleString() + ' から';
-    return '<td title="' + esc(title) + '"><div>' + fmtDuration(st.durationMs) + (st.fromStart ? '<span class="muted">以上</span>' : '') +
+    var text = st.fromStart && st.durationMs < 60000 ? '起動時から' : fmtDuration(st.durationMs) + (st.fromStart ? '<span class="muted">以上</span>' : '');
+    return '<td title="' + esc(title) + '"><div>' + text +
       '</div><div class="leg-sub">平均 ' + pct(st.avg, digits) + '</div></td>';
   }
 
-  function legCell(dex, px, hourlyPct) {
-    var sub = price(px) + (hourlyPct == null ? '' : ' / ' + signedPct(hourlyPct, 4) + '/h');
+  function legCell(dex, px, hourlyPct, ageMs) {
+    var age = isNum(ageMs) && ageMs >= 20000 ? '<span title="このDEXの価格はこの時間だけ前のものです"> (' + Math.round(ageMs / 1000) + '秒前)</span>' : '';
+    var sub = price(px) + age + (hourlyPct == null ? '' : ' / ' + signedPct(hourlyPct, 4) + '/h');
     return '<td class="l"><div class="leg-name">' + label(dex) + '</div><div class="leg-sub">' + sub + '</div></td>';
   }
 
@@ -298,8 +300,8 @@
         '<td>' + pct(f.aprPct, 1) + '</td>' +
         streakCell(f, 1) +
         '<td>' + pct(f.hourlyPct, 4) + '</td>' +
-        legCell(f.shortOn, f.shortPrice, f.shortHourlyPct) +
-        legCell(f.longOn, f.longPrice, f.longHourlyPct) +
+        legCell(f.shortOn, f.shortPrice, f.shortHourlyPct, f.shortPriceAgeMs) +
+        legCell(f.longOn, f.longPrice, f.longHourlyPct, f.longPriceAgeMs) +
         '<td>' + pct(f.pricePct, 3) + '</td>' +
         '<td>' + vol(f.minVolume24h) + '</td>' +
         '<td>' + dexCount + '</td>';
@@ -308,8 +310,8 @@
       cells = symCell(r) +
         '<td>' + pct(p.pct, 3) + '</td>' +
         streakCell(p, 3) +
-        legCell(p.highOn, p.highPrice, null) +
-        legCell(p.lowOn, p.lowPrice, null) +
+        legCell(p.highOn, p.highPrice, null, p.highPriceAgeMs) +
+        legCell(p.lowOn, p.lowPrice, null, p.lowPriceAgeMs) +
         '<td>' + (v.fr ? pct(v.fr.aprPct, 1) : '—') + '</td>' +
         '<td>' + vol(p.minVolume24h) + '</td>' +
         '<td>' + dexCount + '</td>';
@@ -317,6 +319,16 @@
     var html = '<tr class="row' + (isHit(r) ? ' hit' : '') + '" data-sym="' + esc(r.symbol) + '">' + cells + '</tr>';
     if (state.expanded[r.symbol]) html += detailHtml(r);
     return html;
+  }
+
+  // 価格の古さ（分かるDEXだけ。Variational は最大1〜2分遅れる）
+  function ageNote(e) {
+    if (!isNum(e.priceAgeMs)) return '';
+    var sec = Math.round(e.priceAgeMs / 1000);
+    var max = state.snap && state.snap.alertConfig && state.snap.alertConfig.maxPriceAgeSeconds;
+    var stale = max > 0 && sec > max;
+    return '<div class="leg-sub"' + (stale ? ' style="color:var(--yellow)" title="価格が古いため、価格乖離の判定には使っていません"' : '') + '>' +
+      sec + '秒前' + (stale ? '・価格差の判定から除外' : '') + '</div>';
   }
 
   function detailHtml(r) {
@@ -334,7 +346,7 @@
       var note = e.outlier ? ' <span class="muted" title="価格が他のDEXと大きく違うため、同名の別銘柄とみなして比較から除外">（別物？除外）</span>'
         : thin ? ' <span class="muted" title="24時間出来高が通知の下限に届かないため、出来高フィルタON中は比較に使っていません">（出来高不足）</span>' : '';
       return '<tr' + (e.outlier || thin ? ' class="muted"' : '') + '><td class="l">' + label(e.dex) + note + '</td><td class="l">' + esc(e.raw) + '</td>' +
-        '<td>' + price(e.price) + '</td>' +
+        '<td>' + price(e.price) + ageNote(e) + '</td>' +
         '<td>' + signedPct(h, 5) + '</td><td>' + signedPct(apr, 1) + '</td>' +
         '<td class="muted">' + rawFr + '</td>' +
         '<td>' + vol(e.volume24h) + '</td></tr>';

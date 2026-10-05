@@ -43,6 +43,7 @@ function compare(byDex, opts = {}) {
       fundingRaw: r.fundingRaw ?? null,
       intervalHours: r.intervalHours ?? null,
       volume24h: r.volume24h ?? null,
+      priceAgeMs: r.priceAgeMs ?? null,
       outlier: false,
     }));
 
@@ -57,7 +58,8 @@ function compare(byDex, opts = {}) {
     }
 
     const minVol = opts.alert && opts.alert.minVolume24hUsd > 0 ? opts.alert.minVolume24hUsd : 0;
-    const { fr, price } = pickPairs(entries, sanity);
+    const maxAge = opts.alert && opts.alert.maxPriceAgeSeconds > 0 ? opts.alert.maxPriceAgeSeconds * 1000 : 0;
+    const { fr, price } = pickPairs(entries, sanity, maxAge);
 
     // 出来高: 全DEXのうち一番薄いもの（参考値）
     const vols = entries.map((e) => e.volume24h).filter(isNum);
@@ -68,7 +70,7 @@ function compare(byDex, opts = {}) {
     let liquid = null;
     if (minVol > 0) {
       const ok = entries.filter((e) => isNum(e.volume24h) && e.volume24h >= minVol);
-      if (ok.length >= 2) liquid = { dexCount: ok.length, dexes: ok.map((e) => e.dex), ...pickPairs(ok, sanity) };
+      if (ok.length >= 2) liquid = { dexCount: ok.length, dexes: ok.map((e) => e.dex), ...pickPairs(ok, sanity, maxAge) };
     }
 
     const result = {
@@ -96,7 +98,7 @@ function legVolume(a, b) {
 
 // FR が一番高いDEX（ショート先）と一番低いDEX（ロング先）、価格が一番高い/安いDEXを選ぶ。
 // 並べ替えて両端を取るので、全DEXが同じ値でも同じDEXが両側に来ることはない。
-function pickPairs(entries, sanity) {
+function pickPairs(entries, sanity, maxPriceAgeMs) {
   let fr = null;
   const frs = entries.filter((e) => isNum(e.fundingHourly)).sort((a, b) => a.fundingHourly - b.fundingHourly);
   if (frs.length >= 2) {
@@ -111,6 +113,8 @@ function pickPairs(entries, sanity) {
       longOn: lo.dex,
       shortPrice: hi.price,
       longPrice: lo.price,
+      shortPriceAgeMs: hi.priceAgeMs ?? null,
+      longPriceAgeMs: lo.priceAgeMs ?? null,
       shortHourlyPct: hi.fundingHourly * 100,
       longHourlyPct: lo.fundingHourly * 100,
       // この2つのDEX間の価格差（実際に両建てするときに効く差）
@@ -119,8 +123,11 @@ function pickPairs(entries, sanity) {
     };
   }
 
+  // 価格が古すぎるDEX（キャッシュ等で遅れている）は、価格乖離の判定に使わない
   let price = null;
-  const ps = entries.filter((e) => isNum(e.price) && e.price > 0).sort((a, b) => a.price - b.price);
+  const ps = entries
+    .filter((e) => isNum(e.price) && e.price > 0 && !(maxPriceAgeMs > 0 && isNum(e.priceAgeMs) && e.priceAgeMs > maxPriceAgeMs))
+    .sort((a, b) => a.price - b.price);
   if (ps.length >= 2) {
     const lo = ps[0];
     const hi = ps[ps.length - 1];
@@ -131,6 +138,8 @@ function pickPairs(entries, sanity) {
       lowOn: lo.dex,
       highPrice: hi.price,
       lowPrice: lo.price,
+      highPriceAgeMs: hi.priceAgeMs ?? null,
+      lowPriceAgeMs: lo.priceAgeMs ?? null,
       suspicious: ratio >= sanity,
       minVolume24h: legVolume(hi, lo),
     };

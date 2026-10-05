@@ -33,6 +33,25 @@ test('Variational: funding_rate は年率。休止中(interval=0)は除外', () 
   assert.equal(rows[0].volume24h, 1000);
 });
 
+test('Variational: 価格は quotes の bid/ask の中間値（mark_price は更新が遅い）、古さも記録', () => {
+  const now = Date.parse('2026-10-05T04:10:00Z');
+  const data = {
+    listings: [
+      {
+        ticker: 'BTC', mark_price: '86045.0', volume_24h: '1', funding_rate: '0.1095', funding_interval_s: 28800,
+        quotes: { updated_at: '2026-10-05T04:09:15Z', base: { bid: '85990', ask: '86010' } },
+      },
+      { ticker: 'ETH', mark_price: '2715.2', volume_24h: '1', funding_rate: '0.1095', funding_interval_s: 28800 },
+    ],
+  };
+  const rows = parseVariational(data, now);
+  assert.equal(rows[0].price, 86000);
+  assert.equal(rows[0].priceAgeMs, 45000);
+  // quotes が無ければ mark_price（古さは不明）
+  assert.equal(rows[1].price, 2715.2);
+  assert.equal(rows[1].priceAgeMs, undefined);
+});
+
 test('Nado: funding_rate は24hあたり、銘柄名の -PERP_USDT0 と kPEPE を正規化', () => {
   const data = {
     'ETH-PERP_USDT0': { product_type: 'perpetual', base_currency: 'ETH-PERP', mark_price: 2700.4, funding_rate: 0.0003, quote_volume: 2.5e7 },

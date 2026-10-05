@@ -152,7 +152,9 @@ function parseParadex(summary, markets, defaultIntervalHours) {
 // funding_rate は「年率」の小数（例: 0.1095 = 年10.95% = 8hあたり0.01%）。
 // funding_interval_s は支払い間隔で、レートの単位ではない。
 const HOURS_PER_YEAR = 24 * 365;
-function parseVariational(data) {
+// 価格について: mark_price は数分に1回しか更新されない（2026-10 実測: 6分で1回）。
+// quotes の bid/ask は約1分ごとに更新されるので、その中間値を使い、quotes.updated_at から価格の古さも記録する。
+function parseVariational(data, now = Date.now()) {
   const listings = data && data.listings;
   if (!Array.isArray(listings)) throw new Error('Variational: listings が見つからない');
   const rows = [];
@@ -160,9 +162,16 @@ function parseVariational(data) {
     if (!l || typeof l.ticker !== 'string') continue;
     // funding_interval_s = 0 は市場休止中の RWA（FR=0・価格固定）なので除外
     if (!(num(l.funding_interval_s) > 0)) continue;
-    const price = firstNum(l.mark_price);
+    const q = l.quotes || {};
+    const bid = num(q.base && q.base.bid);
+    const ask = num(q.base && q.base.ask);
+    const mid = bid > 0 && ask > 0 && ask >= bid ? (bid + ask) / 2 : null;
+    const price = firstNum(mid, l.mark_price);
     if (price == null) continue;
-    rows.push(makeRow(l.ticker, price, l.funding_rate, HOURS_PER_YEAR, l.volume_24h));
+    const row = makeRow(l.ticker, price, l.funding_rate, HOURS_PER_YEAR, l.volume_24h);
+    const updated = mid != null ? Date.parse(q.updated_at) : NaN;
+    if (Number.isFinite(updated)) row.priceAgeMs = Math.max(0, now - updated);
+    rows.push(row);
   }
   return rows;
 }
