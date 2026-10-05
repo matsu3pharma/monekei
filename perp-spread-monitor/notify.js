@@ -5,19 +5,27 @@ function fmtPct(x, digits) {
   return x == null || !Number.isFinite(x) ? '—' : `${x.toFixed(digits)}%`;
 }
 
+// 価格は桁数がばらばら（BTC 85000 / PEPE 0.0000123）なので有効数字で表示
+function fmtPrice(x) {
+  if (x == null || !Number.isFinite(x)) return '—';
+  if (x >= 1000) return x.toLocaleString('en-US', { maximumFractionDigits: 1 });
+  if (x >= 1) return String(Number(x.toPrecision(6)));
+  return String(Number(x.toPrecision(4)));
+}
+
 // labels: { dex: 表示名 }
 function formatAlert(a, labels = {}) {
   const L = (d) => labels[d] || d;
   if (a.type === 'fr') {
     return [
       `【FR乖離】${a.symbol}  年率 ${fmtPct(a.aprPct, 1)}（1h ${fmtPct(a.hourlyPct, 4)}）`,
-      `  ${L(a.shortOn)}でショート / ${L(a.longOn)}でロング`,
+      `  ${L(a.shortOn)}でショート${a.shortPrice != null ? `（${fmtPrice(a.shortPrice)}）` : ''} / ${L(a.longOn)}でロング${a.longPrice != null ? `（${fmtPrice(a.longPrice)}）` : ''}`,
       `  価格差 ${fmtPct(a.pricePct, 3)}`,
     ].join('\n');
   }
   return [
     `【価格乖離】${a.symbol}  ${fmtPct(a.pricePct, 3)}`,
-    `  高い: ${L(a.highOn)} / 安い: ${L(a.lowOn)}`,
+    `  高い: ${L(a.highOn)}${a.highPrice != null ? `（${fmtPrice(a.highPrice)}）` : ''} / 安い: ${L(a.lowOn)}${a.lowPrice != null ? `（${fmtPrice(a.lowPrice)}）` : ''}`,
   ].join('\n');
 }
 
@@ -56,4 +64,5 @@ async function notifyAll(notifyCfg = {}, text) {
     .filter(Boolean);
 }
 
-module.exports = { formatAlert, notifyAll, sendDiscord, sendTelegram };
+module.exports = {
+  fmtPrice, formatAlert, notifyAll, sendDiscord, sendTelegram };

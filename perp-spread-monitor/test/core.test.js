@@ -157,3 +157,64 @@ test('2つずつに割れていて本物が決められないときは従来ど�
   assert.equal(r.dexCount, 4);
   assert.ok(r.entries.every((e) => !e.outlier));
 });
+
+test('全DEXのFRが同じでも、ショート先とロング先が同じDEXにならない', () => {
+  const byDex = {
+    a: [row('FET', 0.5, 0.0000125, 1)],
+    b: [row('FET', 0.501, 0.0000125, 1)],
+    c: [row('FET', 0.502, 0.0001, 8)],
+  };
+  const [r] = compare(byDex, { alert: ALERT });
+  close(r.fr.aprPct, 0);
+  assert.notEqual(r.fr.shortOn, r.fr.longOn);
+  assert.notEqual(r.price.highOn, r.price.lowOn);
+});
+
+test('ショート先・ロング先の価格とFR、その2つの間の価格差を持つ', () => {
+  const byDex = {
+    a: [row('ETH', 3000, 0.0001, 1)],
+    b: [row('ETH', 3030, -0.0001, 1)],
+    c: [row('ETH', 2970, 0, 1)],
+  };
+  const [r] = compare(byDex, { alert: ALERT });
+  assert.equal(r.fr.shortOn, 'a');
+  assert.equal(r.fr.shortPrice, 3000);
+  assert.equal(r.fr.longOn, 'b');
+  assert.equal(r.fr.longPrice, 3030);
+  close(r.fr.shortHourlyPct, 0.01);
+  close(r.fr.longHourlyPct, -0.01);
+  close(r.fr.pricePct, 1); // a と b の間（全体の最大最小 c〜b ではない）
+  assert.equal(r.price.highPrice, 3030);
+  assert.equal(r.price.lowPrice, 2970);
+});
+
+test('出来高の少ないDEXが混ざっていても、足りているDEXどうしで比べて通知する', () => {
+  const byDex = {
+    big1: [row('ZRO', 2.0, 0.0002, 1, 5e7)],
+    big2: [row('ZRO', 2.001, 0, 1, 3e6)],
+    thin: [row('ZRO', 2.002, -0.001, 1, 1e4)], // FR差は一番大きいが出来高が少ない
+  };
+  const [r] = compare(byDex, { alert: ALERT });
+  // 全DEXでの比較（参考）では thin が選ばれる
+  assert.equal(r.fr.longOn, 'thin');
+  // 出来高が足りているDEXだけの比較
+  assert.equal(r.liquid.dexCount, 2);
+  assert.equal(r.liquid.fr.shortOn, 'big1');
+  assert.equal(r.liquid.fr.longOn, 'big2');
+  assert.equal(r.liquid.fr.minVolume24h, 3e6);
+  assert.equal(r.alert.fr, true);
+  const [c] = alertCandidates([r]);
+  assert.equal(c.key, 'fr|ZRO|big1|big2');
+  assert.equal(c.shortPrice, 2.0);
+});
+
+test('出来高が足りているDEXが1つしか無ければ通知しない', () => {
+  const byDex = {
+    a: [row('XYZ', 1, 0.001, 1, 5e6)],
+    b: [row('XYZ', 1, -0.001, 1, 1e5)],
+    c: [row('XYZ', 1, -0.002, 1, 2e5)],
+  };
+  const [r] = compare(byDex, { alert: ALERT });
+  assert.equal(r.liquid, null);
+  assert.equal(r.alert.fr, false);
+});

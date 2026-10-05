@@ -63,6 +63,9 @@
   th { color: var(--muted); font-weight: 500; font-size: 12px; background: var(--panel2); position: sticky; top: 0; }
   th:first-child, td:first-child { text-align: left; }
   td.l { text-align: left; }
+  .leg-name { font-weight: 500; }
+  .leg-sub { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .hint { color: var(--muted); font-size: 12px; margin: 0 0 6px; }
   tbody tr.row { cursor: pointer; }
   tbody tr.row:hover { background: var(--panel2); }
   tr.hit { background: var(--hit); }
@@ -119,6 +122,7 @@
     <label><input type="checkbox" id="hitOnly"> しきい値超えのみ</label>
   </div>
 
+  <p class="hint" id="hint"></p>
   <div class="table-wrap">
     <table>
       <thead id="thead"></thead>
@@ -217,30 +221,46 @@
     }
   }
 
+  // 出来高フィルタON: 出来高が足りているDEXだけで比べた結果（r.liquid）を表示する。OFF: 全DEXで比べた結果
+  function useLiquid() {
+    var s = state.snap;
+    return state.volFilter && !!(s && s.alertConfig && s.alertConfig.minVolume24hUsd > 0);
+  }
+  function view(r) {
+    return useLiquid() ? r.liquid : r;
+  }
+
+  function legCell(dex, px, hourlyPct) {
+    var sub = price(px) + (hourlyPct == null ? '' : ' / ' + signedPct(hourlyPct, 4) + '/h');
+    return '<td class="l"><div class="leg-name">' + label(dex) + '</div><div class="leg-sub">' + sub + '</div></td>';
+  }
+
   function isHit(r) {
     return state.tab === 'fr' ? !!(r.alert && r.alert.fr) : !!(r.alert && r.alert.price);
   }
 
   function filtered(s) {
     var q = state.q.trim().toUpperCase();
-    var minVol = (s.alertConfig && s.alertConfig.minVolume24hUsd) || 0;
     var list = (s.results || []).filter(function (r) {
-      if (state.tab === 'fr' && !r.fr) return false;
-      if (state.tab === 'price' && !r.price) return false;
+      var v = view(r);
+      if (!v) return false;
+      if (state.tab === 'fr' && !v.fr) return false;
+      if (state.tab === 'price' && !v.price) return false;
       if (q && r.symbol.indexOf(q) === -1) return false;
-      if (state.volFilter && minVol > 0 && !(isNum(r.minVolume24h) && r.minVolume24h >= minVol)) return false;
       if (state.hitOnly && !isHit(r)) return false;
       return true;
     });
     if (state.tab === 'price') {
-      list.sort(function (a, b) { return b.price.pct - a.price.pct; });
+      list.sort(function (a, b) { return view(b).price.pct - view(a).price.pct; });
+    } else {
+      list.sort(function (a, b) { return view(b).fr.aprPct - view(a).fr.aprPct; });
     }
     return list;
   }
 
   var HEAD = {
-    fr: ['銘柄', 'FR差年率', 'FR差1h', 'ショート先', 'ロング先', '価格差', '出来高(小)', 'DEX数'],
-    price: ['銘柄', '価格差', '高いDEX', '安いDEX', 'FR差年率', '出来高(小)', 'DEX数'],
+    fr: ['銘柄', 'FR差年率', 'FR差1h', 'ショート先（価格 / FR）', 'ロング先（価格 / FR）', '2DEX間の価格差', '出来高(小)', '比較DEX数'],
+    price: ['銘柄', '価格差', '高いDEX（価格）', '安いDEX（価格）', 'FR差年率', '出来高(小)', '比較DEX数'],
   };
 
   function symCell(r) {
@@ -251,23 +271,27 @@
 
   function rowHtml(r) {
     var cells;
+    var v = view(r);
+    var dexCount = v.dexCount + (v.dexCount !== r.dexCount ? '<span class="muted"> / ' + r.dexCount + '</span>' : '');
     if (state.tab === 'fr') {
+      var f = v.fr;
       cells = symCell(r) +
-        '<td>' + pct(r.fr.aprPct, 1) + '</td>' +
-        '<td>' + pct(r.fr.hourlyPct, 4) + '</td>' +
-        '<td class="l">' + label(r.fr.shortOn) + '</td>' +
-        '<td class="l">' + label(r.fr.longOn) + '</td>' +
-        '<td>' + (r.price ? pct(r.price.pct, 3) : '—') + '</td>' +
-        '<td>' + vol(r.minVolume24h) + '</td>' +
-        '<td>' + r.dexCount + '</td>';
+        '<td>' + pct(f.aprPct, 1) + '</td>' +
+        '<td>' + pct(f.hourlyPct, 4) + '</td>' +
+        legCell(f.shortOn, f.shortPrice, f.shortHourlyPct) +
+        legCell(f.longOn, f.longPrice, f.longHourlyPct) +
+        '<td>' + pct(f.pricePct, 3) + '</td>' +
+        '<td>' + vol(f.minVolume24h) + '</td>' +
+        '<td>' + dexCount + '</td>';
     } else {
+      var p = v.price;
       cells = symCell(r) +
-        '<td>' + pct(r.price.pct, 3) + '</td>' +
-        '<td class="l">' + label(r.price.highOn) + '</td>' +
-        '<td class="l">' + label(r.price.lowOn) + '</td>' +
-        '<td>' + (r.fr ? pct(r.fr.aprPct, 1) : '—') + '</td>' +
-        '<td>' + vol(r.minVolume24h) + '</td>' +
-        '<td>' + r.dexCount + '</td>';
+        '<td>' + pct(p.pct, 3) + '</td>' +
+        legCell(p.highOn, p.highPrice, null) +
+        legCell(p.lowOn, p.lowPrice, null) +
+        '<td>' + (v.fr ? pct(v.fr.aprPct, 1) : '—') + '</td>' +
+        '<td>' + vol(p.minVolume24h) + '</td>' +
+        '<td>' + dexCount + '</td>';
     }
     var html = '<tr class="row' + (isHit(r) ? ' hit' : '') + '" data-sym="' + esc(r.symbol) + '">' + cells + '</tr>';
     if (state.expanded[r.symbol]) html += detailHtml(r);
@@ -285,8 +309,10 @@
       var rawFr = !isNum(e.fundingRaw) ? '—'
         : e.intervalHours === 8760 ? (e.fundingRaw * 100).toFixed(2) + '% / 年率'
         : (e.fundingRaw * 100).toFixed(4) + '% / ' + e.intervalHours + 'h';
-      var note = e.outlier ? ' <span class="muted" title="価格が他のDEXと大きく違うため、同名の別銘柄とみなして比較から除外">（別物？除外）</span>' : '';
-      return '<tr' + (e.outlier ? ' class="muted"' : '') + '><td class="l">' + label(e.dex) + note + '</td><td class="l">' + esc(e.raw) + '</td>' +
+      var thin = !e.outlier && useLiquid() && r.liquid && r.liquid.dexes.indexOf(e.dex) === -1;
+      var note = e.outlier ? ' <span class="muted" title="価格が他のDEXと大きく違うため、同名の別銘柄とみなして比較から除外">（別物？除外）</span>'
+        : thin ? ' <span class="muted" title="24時間出来高が通知の下限に届かないため、出来高フィルタON中は比較に使っていません">（出来高不足）</span>' : '';
+      return '<tr' + (e.outlier || thin ? ' class="muted"' : '') + '><td class="l">' + label(e.dex) + note + '</td><td class="l">' + esc(e.raw) + '</td>' +
         '<td>' + price(e.price) + '</td>' +
         '<td>' + signedPct(h, 5) + '</td><td>' + signedPct(apr, 1) + '</td>' +
         '<td class="muted">' + rawFr + '</td>' +
@@ -308,6 +334,11 @@
     $('count-fr').textContent = '(' + all.filter(function (r) { return r.alert && r.alert.fr; }).length + ')';
     $('count-price').textContent = '(' + all.filter(function (r) { return r.alert && r.alert.price; }).length + ')';
     var list = filtered(s);
+    var minVol = s.alertConfig && s.alertConfig.minVolume24hUsd;
+    $('hint').textContent = (useLiquid()
+      ? '出来高フィルタON：24時間出来高が ' + vol(minVol) + ' 以上のDEXどうしで比べています（比較DEX数の右の数字は上場DEX数）。'
+      : '出来高フィルタOFF：出来高に関係なく全DEXで比べています。') +
+      ' 行をクリックすると、全DEXの価格・FRが見られます。';
     if (!list.length) {
       var msg = s.updatedAt ? '該当する銘柄がありません' : 'データ取得中…';
       $('tbody').innerHTML = '<tr><td class="empty" colspan="' + HEAD[state.tab].length + '">' + msg + '</td></tr>';

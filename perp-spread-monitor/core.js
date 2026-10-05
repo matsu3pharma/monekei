@@ -56,45 +56,20 @@ function compare(byDex, opts = {}) {
       entries = all;
     }
 
-    // FR乖離
-    let fr = null;
-    const frs = entries.filter((e) => isNum(e.fundingHourly));
-    if (frs.length >= 2) {
-      let hi = frs[0], lo = frs[0];
-      for (const e of frs) {
-        if (e.fundingHourly > hi.fundingHourly) hi = e;
-        if (e.fundingHourly < lo.fundingHourly) lo = e;
-      }
-      const diff = hi.fundingHourly - lo.fundingHourly;
-      fr = {
-        hourlyPct: diff * 100,
-        aprPct: diff * HOURS_PER_YEAR * 100,
-        shortOn: hi.dex, // FRが一番高い = ショートでFRを受け取る側
-        longOn: lo.dex,
-      };
-    }
+    const minVol = opts.alert && opts.alert.minVolume24hUsd > 0 ? opts.alert.minVolume24hUsd : 0;
+    const { fr, price } = pickPairs(entries, sanity);
 
-    // 価格乖離
-    let price = null;
-    const ps = entries.filter((e) => isNum(e.price) && e.price > 0);
-    if (ps.length >= 2) {
-      let hi = ps[0], lo = ps[0];
-      for (const e of ps) {
-        if (e.price > hi.price) hi = e;
-        if (e.price < lo.price) lo = e;
-      }
-      const ratio = hi.price / lo.price;
-      price = {
-        pct: (ratio - 1) * 100,
-        highOn: hi.dex,
-        lowOn: lo.dex,
-        suspicious: ratio >= sanity,
-      };
-    }
-
-    // 出来高: 薄い方が実際の制約になるので最小値
+    // 出来高: 全DEXのうち一番薄いもの（参考値）
     const vols = entries.map((e) => e.volume24h).filter(isNum);
     const minVolume24h = vols.length ? Math.min(...vols) : null;
+
+    // 出来高が minVolume24hUsd 以上のDEXだけで比べ直したもの。
+    // 薄いDEXが1つ混ざっているだけで銘柄ごと消えないよう、画面の「出来高フィルタ」と通知はこちらを使う
+    let liquid = null;
+    if (minVol > 0) {
+      const ok = entries.filter((e) => isNum(e.volume24h) && e.volume24h >= minVol);
+      if (ok.length >= 2) liquid = { dexCount: ok.length, dexes: ok.map((e) => e.dex), ...pickPairs(ok, sanity) };
+    }
 
     const result = {
       symbol,
@@ -104,6 +79,7 @@ function compare(byDex, opts = {}) {
       price,
       suspicious: !!(price && price.suspicious),
       minVolume24h,
+      liquid,
     };
     result.alert = opts.alert ? evaluateAlert(result, opts.alert) : { fr: false, price: false };
     results.push(result);
@@ -111,6 +87,55 @@ function compare(byDex, opts = {}) {
 
   results.sort((a, b) => (b.fr ? b.fr.aprPct : -Infinity) - (a.fr ? a.fr.aprPct : -Infinity));
   return results;
+}
+
+function legVolume(a, b) {
+  const v = [a.volume24h, b.volume24h].filter(isNum);
+  return v.length === 2 ? Math.min(...v) : null;
+}
+
+// FR が一番高いDEX（ショート先）と一番低いDEX（ロング先）、価格が一番高い/安いDEXを選ぶ。
+// 並べ替えて両端を取るので、全DEXが同じ値でも同じDEXが両側に来ることはない。
+function pickPairs(entries, sanity) {
+  let fr = null;
+  const frs = entries.filter((e) => isNum(e.fundingHourly)).sort((a, b) => a.fundingHourly - b.fundingHourly);
+  if (frs.length >= 2) {
+    const lo = frs[0];
+    const hi = frs[frs.length - 1];
+    const diff = hi.fundingHourly - lo.fundingHourly;
+    const pricesOk = isNum(hi.price) && hi.price > 0 && isNum(lo.price) && lo.price > 0;
+    fr = {
+      hourlyPct: diff * 100,
+      aprPct: diff * HOURS_PER_YEAR * 100,
+      shortOn: hi.dex, // FRが一番高い = ショートでFRを受け取る側
+      longOn: lo.dex,
+      shortPrice: hi.price,
+      longPrice: lo.price,
+      shortHourlyPct: hi.fundingHourly * 100,
+      longHourlyPct: lo.fundingHourly * 100,
+      // この2つのDEX間の価格差（実際に両建てするときに効く差）
+      pricePct: pricesOk ? (Math.max(hi.price, lo.price) / Math.min(hi.price, lo.price) - 1) * 100 : null,
+      minVolume24h: legVolume(hi, lo),
+    };
+  }
+
+  let price = null;
+  const ps = entries.filter((e) => isNum(e.price) && e.price > 0).sort((a, b) => a.price - b.price);
+  if (ps.length >= 2) {
+    const lo = ps[0];
+    const hi = ps[ps.length - 1];
+    const ratio = hi.price / lo.price;
+    price = {
+      pct: (ratio - 1) * 100,
+      highOn: hi.dex,
+      lowOn: lo.dex,
+      highPrice: hi.price,
+      lowPrice: lo.price,
+      suspicious: ratio >= sanity,
+      minVolume24h: legVolume(hi, lo),
+    };
+  }
+  return { fr, price };
 }
 
 function markOutliers(entries, sanity) {
@@ -125,17 +150,18 @@ function markOutliers(entries, sanity) {
   }
 }
 
-function volumeOk(result, minVolume) {
-  if (!(minVolume > 0)) return true;
-  return isNum(result.minVolume24h) && result.minVolume24h >= minVolume;
+// 通知の判定に使う比較結果。出来高の下限があるときは「出来高が足りているDEXだけ」の比較を使う
+function alertView(result, alert) {
+  return alert && alert.minVolume24hUsd > 0 ? result.liquid : result;
 }
 
 function evaluateAlert(result, alert) {
-  const vol = volumeOk(result, alert.minVolume24hUsd);
-  const ok = vol && !result.suspicious;
+  const v = alertView(result, alert);
+  const ok = !!v && !result.suspicious;
   return {
-    fr: !!(ok && result.fr && result.fr.aprPct >= alert.frSpreadAprPct),
-    price: !!(ok && result.price && result.price.pct >= alert.priceSpreadPct),
+    fr: !!(ok && v.fr && v.fr.aprPct >= alert.frSpreadAprPct),
+    price: !!(ok && v.price && v.price.pct >= alert.priceSpreadPct),
+    useLiquid: !!(alert && alert.minVolume24hUsd > 0),
   };
 }
 
@@ -143,29 +169,37 @@ function evaluateAlert(result, alert) {
 function alertCandidates(results) {
   const out = [];
   for (const r of results) {
-    if (r.alert && r.alert.fr) {
+    if (!r.alert) continue;
+    const v = r.alert.useLiquid ? r.liquid : r;
+    if (r.alert.fr && v && v.fr) {
+      const f = v.fr;
       out.push({
-        key: `fr|${r.symbol}|${r.fr.shortOn}|${r.fr.longOn}`,
+        key: `fr|${r.symbol}|${f.shortOn}|${f.longOn}`,
         type: 'fr',
         symbol: r.symbol,
-        aprPct: r.fr.aprPct,
-        hourlyPct: r.fr.hourlyPct,
-        shortOn: r.fr.shortOn,
-        longOn: r.fr.longOn,
-        pricePct: r.price ? r.price.pct : null,
-        minVolume24h: r.minVolume24h,
+        aprPct: f.aprPct,
+        hourlyPct: f.hourlyPct,
+        shortOn: f.shortOn,
+        longOn: f.longOn,
+        shortPrice: f.shortPrice,
+        longPrice: f.longPrice,
+        pricePct: f.pricePct,
+        minVolume24h: f.minVolume24h,
       });
     }
-    if (r.alert && r.alert.price) {
+    if (r.alert.price && v && v.price) {
+      const p = v.price;
       out.push({
-        key: `price|${r.symbol}|${r.price.highOn}|${r.price.lowOn}`,
+        key: `price|${r.symbol}|${p.highOn}|${p.lowOn}`,
         type: 'price',
         symbol: r.symbol,
-        pricePct: r.price.pct,
-        highOn: r.price.highOn,
-        lowOn: r.price.lowOn,
-        aprPct: r.fr ? r.fr.aprPct : null,
-        minVolume24h: r.minVolume24h,
+        pricePct: p.pct,
+        highOn: p.highOn,
+        lowOn: p.lowOn,
+        highPrice: p.highPrice,
+        lowPrice: p.lowPrice,
+        aprPct: v.fr ? v.fr.aprPct : null,
+        minVolume24h: p.minVolume24h,
       });
     }
   }
