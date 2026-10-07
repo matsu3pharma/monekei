@@ -1,0 +1,54 @@
+# チェーンごとの設定。
+#   aggregator_chain : KyberSwap Aggregator API のチェーン名（URLの /{chain}/api/v1/routes）
+#   native_pair      : ガス代を払うネイティブトークンの bitbank ペア（ガス代を自前計算するときの価格源）
+#   rpc              : 公開RPC。アグリゲーターがガス見積りを返さないときに eth_gasPrice を取る
+#   swap_gas         : 自前計算時に仮定するスワップのガス量
+#   approve_gas      : ERC-20 を売るときに先に必要な approve トランザクションのガス量（ネイティブ売却では不要）
+#   usdc             : 受け取りUSDC。キーが表示名、native はそのチェーンの発行元ネイティブ版
+chains:
+  ethereum:
+    label: Ethereum
+    aggregator_chain: ethereum
+    native_symbol: ETH
+    native_pair: eth_jpy
+    rpc: https://ethereum-rpc.publicnode.com
+    swap_gas: 250000
+    approve_gas: 50000
+    usdc:
+      USDC: { address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", decimals: 6, native: true }
+
+  polygon:
+    label: Polygon PoS
+    aggregator_chain: polygon
+    native_symbol: POL
+    native_pair: pol_jpy
+    rpc: https://polygon-bor-rpc.publicnode.com
+    swap_gas: 300000
+    approve_gas: 50000
+    usdc:
+      USDC: { address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", decimals: 6, native: true }
+      USDC.e: { address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", decimals: 6, native: false }
+
+  arbitrum:
+    label: Arbitrum One
+    aggregator_chain: arbitrum
+    native_symbol: ETH
+    native_pair: eth_jpy
+    rpc: https://arbitrum-one-rpc.publicnode.com
+    swap_gas: 600000
+    approve_gas: 60000
+    usdc:
+      USDC: { address: "0xaf88d065e77c8cC2239327C5EDb3A432268e5831", decimals: 6, native: true }
+      USDC.e: { address: "0xFF970A61A04b1cA14834A43f5dE4533eBDDB5CC8", decimals: 6, native: false }
+
+  optimism:
+    label: OP Mainnet
+    aggregator_chain: optimism
+    native_symbol: ETH
+    native_pair: eth_jpy
+    rpc: https://optimism-rpc.publicnode.com
+    swap_gas: 300000
+    approve_gas: 50000
+    usdc:
+      USDC: { address: "0x0b2C639c533813f4Aa9D7837CAf62653d097Ff85", decimals: 6, native: true }
+      USDC.e: { address: "0x7F5c764cBc14f9669B88837ca1490cCa17c31607", decimals: 6, native: false }

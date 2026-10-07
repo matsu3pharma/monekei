@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>bitbank DEX Scout</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --line: #e3e6eb;
+    --accent: #2563eb; --accent-soft: #e8efff; --good: #0f7b4f; --good-soft: #e5f6ee;
+    --warn: #9a5b00; --warn-soft: #fff4dc; --bad: #b42318; --bad-soft: #fdecea; --best: #fff9db;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1a1f27; --text: #e6e9ef; --muted: #98a2b3; --line: #2a313c;
+      --accent: #6ea0ff; --accent-soft: #1f2a40; --good: #4cc38a; --good-soft: #15302a;
+      --warn: #f0b44c; --warn-soft: #33290f; --bad: #f97066; --bad-soft: #3a1c1a; --best: #2b2a17;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 28px 0 8px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; margin-bottom: 14px; }
+  .status { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; color: var(--muted); font-size: 13px; }
+  .status b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .controls { display: grid; gap: 10px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+  .label { width: 8.5em; color: var(--muted); font-size: 12px; }
+  .chip { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 999px; padding: 4px 12px; cursor: pointer; font: inherit; }
+  .chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  input[type=number] { width: 9em; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); font: inherit; }
+  button.primary { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 14px; cursor: pointer; font: inherit; }
+  button.primary:disabled { opacity: .6; cursor: wait; }
+  .banner { margin: 10px 0 0; padding: 8px 12px; border-radius: 8px; font-size: 13px; }
+  .banner.err { background: var(--bad-soft); color: var(--bad); }
+  .banner.note { background: var(--warn-soft); color: var(--warn); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+  table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; background: var(--panel); position: sticky; top: 0; }
+  td.num, th.num { text-align: right; }
+  tbody tr.route { cursor: pointer; }
+  tbody tr.route:hover { background: var(--accent-soft); }
+  tr.best-chain td { background: var(--best); }
+  tr.failed td { color: var(--muted); }
+  .badge { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; margin-right: 4px; white-space: nowrap; }
+  .badge.best { background: var(--good-soft); color: var(--good); font-weight: 600; }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.usdc-e { background: var(--accent-soft); color: var(--accent); }
+  .loss-good { color: var(--good); font-weight: 600; }
+  .loss-bad { color: var(--bad); }
+  .notes { white-space: normal; min-width: 14em; }
+  tr.detail td { background: var(--bg); white-space: normal; }
+  .bd { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 16px; padding: 4px 2px; }
+  .bd div span { display: block; color: var(--muted); font-size: 12px; }
+  .bd div b { font-variant-numeric: tabular-nums; }
+  .bd-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin: 8px 0 4px; background: var(--line); }
+  .bd-bar i { display: block; height: 100%; }
+  .facts { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .matrix td, .matrix th { text-align: center; }
+  .matrix td small { display: block; color: var(--muted); }
+  .muted { color: var(--muted); }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  footer { margin-top: 28px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>bitbank → DEX → USDC 損失比較</h1>
+      <div class="sub">日本円を bitbank で暗号資産に替え、出金して DEX で USDC にしたときの損失（読み取り専用の試算）</div>
+    </div>
+    <div class="status">
+      <span>USD/JPY <b id="fx">-</b> <span id="fx-src"></span></span>
+      <span>更新 <b id="updated">-</b></span>
+      <span id="countdown"></span>
+      <button class="primary" id="refresh">更新</button>
+    </div>
+  </header>
+
+  <section class="panel controls">
+    <div class="row">
+      <span class="label">投入額</span>
+      <span id="amount-chips" class="row"></span>
+      <input type="number" id="amount-custom" min="1000" step="1000" placeholder="自由入力（円）">
+    </div>
+    <div class="row">
+      <span class="label">欲しいチェーン</span>
+      <span id="chain-chips" class="row"></span>
+    </div>
+    <div class="row">
+      <span class="label">注文方法</span>
+      <button class="chip" data-mode="taker" aria-pressed="true">テイカー（成行）</button>
+      <button class="chip" data-mode="maker" aria-pressed="false">メイカー（指値）</button>
+    </div>
+  </section>
+  <div id="banners"></div>
+
+  <h2 id="main-title">ルート比較</h2>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>銘柄</th><th>出金チェーン</th><th>受取</th>
+          <th class="num">受取USDC</th><th class="num">損失額（円）</th><th class="num">損失率</th><th class="num">価格乖離</th>
+          <th>注意</th>
+        </tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="8" class="muted"><span class="spinner"></span> 計算中…（初回は数十秒かかることがあります）</td></tr></tbody>
+    </table>
+  </div>
+  <div class="sub" style="margin-top:6px">行をクリックすると内訳を表示。<span class="badge best">最安</span> はそのチェーンで一番損失が小さいルート。</div>
+
+  <h2>金額別の最安ルート</h2>
+  <div class="table-wrap"><table class="matrix" id="matrix"></table></div>
+
+  <h2>未設定の銘柄</h2>
+  <div class="panel" id="unconfigured"><span class="muted">-</span></div>
+
+  <footer id="notice"></footer>
+</main>
+
+<script>
+const REFRESH_SEC = 60;
+const BREAKDOWN = [
+  ['spreadSlippage', 'スプレッド・スリッページ', '#7c8db5'],
+  ['tradingFee', '取引手数料', '#c084fc'],
+  ['withdrawFee', '出金手数料', '#f59e0b'],
+  ['priceGap', '国内外の価格乖離', '#ef4444'],
+  ['dexCost', 'DEXコスト', '#14b8a6'],
+  ['gas', 'ガス代', '#64748b'],
+];
+
+const state = { amounts: [], selected: null, custom: null, chains: new Set(), allChains: [], mode: 'taker', data: null, open: new Set(), loading: false, timer: REFRESH_SEC };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+const yen = (n) => (n == null ? '-' : Math.round(n).toLocaleString('ja-JP'));
+const pct = (n) => (n == null ? '-' : (n * 100).toFixed(2) + '%');
+const usdc = (n) => (n == null ? '-' : n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+
+function amountsToScan() {
+  const set = new Set(state.amounts);
+  if (state.custom) set.add(state.custom);
+  return [...set].sort((a, b) => a - b);
+}
+
+function renderControls() {
+  const chips = state.amounts.map((a) => `<button class="chip" data-amount="${a}" aria-pressed="${a === state.selected}">${a.toLocaleString('ja-JP')}円</button>`);
+  if (state.custom && !state.amounts.includes(state.custom)) chips.push(`<button class="chip" data-amount="${state.custom}" aria-pressed="${state.custom === state.selected}">${state.custom.toLocaleString('ja-JP')}円</button>`);
+  $('amount-chips').innerHTML = chips.join('');
+  $('chain-chips').innerHTML =
+    `<button class="chip" data-chain="" aria-pressed="${state.chains.size === 0}">すべて</button>` +
+    state.allChains.map((c) => `<button class="chip" data-chain="${c.id}" aria-pressed="${state.chains.has(c.id)}">${esc(c.label)}</button>`).join('');
+  document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.mode === state.mode));
+}
+
+function warningBadges(r) {
+  const out = [];
+  if (r.status !== 'ok') out.push(`<span class="badge bad">${esc(r.error)}</span>`);
+  for (const w of r.warnings) out.push(`<span class="badge warn">${esc(w)}</span>`);
+  return out.join('');
+}
+
+function breakdownHtml(r) {
+  const b = r.breakdown;
+  const sum = Object.values(b).reduce((s, v) => s + v, 0);
+  const pos = BREAKDOWN.filter(([k]) => b[k] > 0);
+  const posSum = pos.reduce((s, [k]) => s + b[k], 0) || 1;
+  const bar = pos.map(([k, label, color]) => `<i title="${label} ${yen(b[k])}円" style="width:${(b[k] / posSum) * 100}%;background:${color}"></i>`).join('');
+  const items = BREAKDOWN.map(([k, label, color]) =>
+    `<div><span><i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:${color};margin-right:4px"></i>${label}</span><b>${yen(b[k])} 円</b></div>`).join('');
+  return `<div class="bd-bar">${bar}</div>
+    <div class="bd">${items}<div><span>合計（= 損失額）</span><b>${yen(sum)} 円</b></div></div>
+    <div class="facts">
+      bitbank: ${r.quantity.toPrecision(8)} ${esc(r.asset)} を VWAP ${r.vwap.toLocaleString('ja-JP', { maximumFractionDigits: 4 })} 円で購入（最良売値 ${r.bestAsk.toLocaleString('ja-JP')} 円、取引手数料率 ${(r.feeRate * 100).toFixed(2)}%）
+      → 出金手数料 ${r.withdrawFee} ${esc(r.asset)}（${esc(r.feeCheckedAt)} 確認）を引いて ${r.netQuantity.toPrecision(8)} ${esc(r.asset)}
+      → ${esc(r.dexSource ?? 'DEX')} で ${esc(r.target)} に交換（基準単価 ${r.dexUnitPrice?.toPrecision(6) ?? '-'} USDC、ガス代 ${r.gasUsdc.toFixed(4)} USDC）
+      → 受取 ${usdc(r.received)} ${esc(r.target)}（${yen(r.receivedJpy)} 円相当）
+    </div>`;
+}
+
+function renderTable() {
+  const d = state.data;
+  if (!d) return;
+  const rows = d.rows.filter((r) => r.amountJpy === state.selected);
+  $('main-title').textContent = `ルート比較 — 投入額 ${state.selected.toLocaleString('ja-JP')} 円（損失率の小さい順）`;
+  if (!rows.length) {
+    $('rows').innerHTML = `<tr><td colspan="8" class="muted">該当するルートがありません</td></tr>`;
+    return;
+  }
+  $('rows').innerHTML = rows.map((r) => {
+    const ok = r.status === 'ok';
+    const cls = ['route', r.bestInChain ? 'best-chain' : '', ok ? '' : 'failed'].join(' ');
+    const badges = (r.bestOverall ? '<span class="badge best">全体最安</span>' : r.bestInChain ? '<span class="badge best">最安</span>' : '');
+    const target = r.targetIsNative ? esc(r.target) : `<span class="badge usdc-e" title="ブリッジ版USDC（ネイティブUSDCとは別物）">${esc(r.target)}</span>`;
+    const lossCls = ok ? (r.lossRate < 0.01 ? 'loss-good' : r.lossRate > 0.05 ? 'loss-bad' : '') : '';
+    let html = `<tr class="${cls}" data-id="${esc(r.id)}">
+      <td>${badges}<b>${esc(r.asset)}</b></td>
+      <td>${esc(r.chainLabel)}</td>
+      <td>${target}</td>
+      <td class="num">${ok ? usdc(r.received) : '-'}</td>
+      <td class="num ${lossCls}">${ok ? yen(r.lossJpy) : '-'}</td>
+      <td class="num ${lossCls}">${ok ? pct(r.lossRate) : '-'}</td>
+      <td class="num">${ok ? pct(r.priceGapRate) : '-'}</td>
+      <td class="notes">${warningBadges(r)}</td>
+    </tr>`;
+    if (ok && state.open.has(r.id)) html += `<tr class="detail"><td colspan="8">${breakdownHtml(r)}</td></tr>`;
+    return html;
+  }).join('');
+}
+
+function renderMatrix() {
+  const d = state.data;
+  if (!d) return;
+  const chains = d.chains.filter((c) => d.rows.some((r) => r.chain === c.id));
+  const head = `<thead><tr><th>投入額</th>${chains.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>`;
+  const body = d.amounts.map((a) => {
+    const cells = chains.map((c) => {
+      const best = d.rows.find((r) => r.amountJpy === a && r.chain === c.id && r.bestInChain);
+      if (!best) return '<td class="muted">-</td>';
+      const mark = best.bestOverall ? '<span class="badge best">全体最安</span>' : '';
+      return `<td>${mark}<b>${esc(best.asset)}</b> → ${esc(best.target)}<small>損失 ${yen(best.lossJpy)}円（${pct(best.lossRate)}）</small></td>`;
+    }).join('');
+    return `<tr><th>${a.toLocaleString('ja-JP')}円</th>${cells}</tr>`;
+  }).join('');
+  $('matrix').innerHTML = head + `<tbody>${body}</tbody>`;
+}
+
+function renderRest() {
+  const d = state.data;
+  $('fx').textContent = d.fx ? d.fx.rate.toFixed(2) : '取得失敗';
+  $('fx-src').textContent = d.fx ? `（${d.fx.provider}・${d.fx.asOf}）` : '';
+  $('updated').textContent = new Date(d.generatedAt).toLocaleTimeString('ja-JP');
+  $('banners').innerHTML =
+    d.errors.map((e) => `<div class="banner err">${esc(e)}</div>`).join('') +
+    `<div class="banner note">${esc(d.notice)}</div>`;
+  $('unconfigured').innerHTML = d.unconfigured.length
+    ? `<div class="sub" style="margin-bottom:6px">config/routes.yaml に無い銘柄。出金先が対応チェーン（EVM）なら追加候補です。</div>` +
+      d.unconfigured.map((u) => `<span class="badge warn" title="出金ネットワーク">${esc(u.asset)}：${esc(u.networks.join(' / '))}</span>`).join(' ')
+    : '<span class="muted">なし</span>';
+  $('notice').textContent = '※ ' + d.notice + ' 損失 = 投入額 − 受取USDC × USD/JPY。価格乖離 = bitbankの約定VWAP ÷（DEX基準単価 × USD/JPY）− 1。';
+}
+
+function render() {
+  renderControls();
+  if (!state.data) return;
+  renderTable();
+  renderMatrix();
+  renderRest();
+}
+
+async function load() {
+  if (state.loading) return;
+  state.loading = true;
+  $('refresh').disabled = true;
+  $('refresh').innerHTML = '<span class="spinner"></span> 計算中';
+  try {
+    const p = new URLSearchParams({ amounts: amountsToScan().join(','), chains: [...state.chains].join(','), mode: state.mode });
+    const res = await fetch('/api/scan?' + p);
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || res.statusText);
+    state.data = json;
+  } catch (e) {
+    $('banners').innerHTML = `<div class="banner err">取得に失敗しました: ${esc(e.message)}</div>`;
+  } finally {
+    state.loading = false;
+    state.timer = REFRESH_SEC;
+    $('refresh').disabled = false;
+    $('refresh').textContent = '更新';
+    render();
+  }
+}
+
+document.addEventListener('click', (e) => {
+  const t = e.target.closest('button, tr.route');
+  if (!t) return;
+  if (t.dataset.amount) {
+    state.selected = Number(t.dataset.amount);
+    render();
+  } else if (t.dataset.chain !== undefined) {
+    if (!t.dataset.chain) state.chains.clear();
+    else state.chains.has(t.dataset.chain) ? state.chains.delete(t.dataset.chain) : state.chains.add(t.dataset.chain);
+    load();
+    render();
+  } else if (t.dataset.mode) {
+    state.mode = t.dataset.mode;
+    load();
+    render();
+  } else if (t.id === 'refresh') {
+    load();
+  } else if (t.dataset.id) {
+    state.open.has(t.dataset.id) ? state.open.delete(t.dataset.id) : state.open.add(t.dataset.id);
+    renderTable();
+  }
+});
+
+$('amount-custom').addEventListener('change', (e) => {
+  const v = Math.round(Number(e.target.value));
+  if (!v || v <= 0) return;
+  state.custom = v;
+  state.selected = v;
+  load();
+  render();
+});
+
+setInterval(() => {
+  if (state.loading) return;
+  state.timer -= 1;
+  $('countdown').textContent = `${state.timer}秒後に自動更新`;
+  if (state.timer <= 0) load();
+}, 1000);
+
+(async () => {
+  const cfg = await fetch('/api/config').then((r) => r.json());
+  state.amounts = cfg.amounts;
+  state.allChains = cfg.chains;
+  state.selected = cfg.amounts.includes(100000) ? 100000 : cfg.amounts[0];
+  render();
+  load();
+})();
+</script>
+</body>
+</html>

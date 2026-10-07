@@ -1,0 +1,25 @@
+{
+  "name": "bitbank-dex-scout",
+  "version": "0.1.0",
+  "private": true,
+  "description": "bitbankで買った暗号資産を出金してDEXでUSDCに替えるときの損失を比較する読み取り専用ツール",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "scan": "tsx src/cli.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "decimal.js": "^10.4.3",
+    "fastify": "^5.2.1",
+    "tsx": "^4.19.2",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

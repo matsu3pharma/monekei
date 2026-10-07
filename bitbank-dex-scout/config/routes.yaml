@@ -1,0 +1,228 @@
+# ルート定義。1行 = 「bitbankのペア × 出金チェーン」。
+#
+# 出金手数料（withdraw_fee）は bitbank 公式の手数料ページ https://bitbank.cc/guide/fee から写した値。
+# bitbank の都合で変わるので、確認したら fee_checked_at を更新すること（30日以上前だと画面に警告が出る）。
+# 公開APIでは出金手数料も出金停止状態も取れない（取れるのはAPIキーが要る /user/assets のみ）ため、手動管理にしている。
+#
+# token:
+#   native                         … そのチェーンのネイティブトークン（ガス代トークン）
+#   { address, decimals }          … ERC-20。コントラクトアドレスを直接指定（手動上書きはここ）
+#   { coingecko: <coin id> }       … CoinGecko から自動で引く（結果は .cache/tokens.json にキャッシュ）
+# targets: 受け取りたいUSDCの種類（chains.yaml の usdc のキー）。省略時は [USDC]
+# disabled: true にすると計算対象から外す（出金停止中など）。disabled_reason に理由を書く
+
+fx:
+  provider: frankfurter       # frankfurter（日次・ECB）| open-er-api（日次〜数時間ごと）| manual
+  # manual_rate: 150          # provider: manual のときに使う USD/JPY
+
+trading_fee:
+  # bitbank の /spot/pairs から自動取得する。取れないときだけこの値を使う
+  taker: 0.0012
+  maker: -0.0002
+
+amounts_jpy: [10000, 50000, 100000, 500000]
+
+thresholds:
+  fee_stale_days: 30          # fee_checked_at がこれより古いと警告
+  thin_book_slippage: 0.005   # VWAP が最良売値より 0.5% 以上悪いと「板が薄い」
+
+routes:
+  # ---- Polygon ----
+  - pair: pol_jpy
+    asset: POL
+    chain: polygon
+    withdraw_fee: 1.4
+    fee_checked_at: "2026-10-07"
+    token: native
+    targets: [USDC, USDC.e]
+  - pair: sand_jpy
+    asset: SAND
+    chain: polygon
+    withdraw_fee: 2.2
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xBbba073C31bF03b8ACf7c28EF0738DeCF3695683", decimals: 18 }
+    targets: [USDC, USDC.e]
+
+  # ---- Ethereum ----
+  - pair: eth_jpy
+    asset: ETH
+    chain: ethereum
+    withdraw_fee: 0.005
+    fee_checked_at: "2026-10-07"
+    token: native
+  - pair: link_jpy
+    asset: LINK
+    chain: ethereum
+    withdraw_fee: 0.5
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x514910771AF9Ca656af840dff83E8264EcF986CA", decimals: 18 }
+  - pair: dai_jpy
+    asset: DAI
+    chain: ethereum
+    withdraw_fee: 10
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x6B175474E89094C44Da98b954EedeAC495271d0F", decimals: 18 }
+  - pair: bat_jpy
+    asset: BAT
+    chain: ethereum
+    withdraw_fee: 30
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x0D8775F648430679A709E98d2b0Cb6250d2887EF", decimals: 18 }
+  - pair: omg_jpy
+    asset: OMG
+    chain: ethereum
+    withdraw_fee: 5
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xd26114cd6EE289AccF82350c8d8487fedB8A0C07", decimals: 18 }
+  - pair: boba_jpy
+    asset: BOBA
+    chain: ethereum
+    withdraw_fee: 17
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x42bBFa2e77757C645eeaAd1655E0911a7553Efbc", decimals: 18 }
+  - pair: enj_jpy
+    asset: ENJ
+    chain: ethereum
+    withdraw_fee: 14
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xF629cBd94d3791C9250152BD8dfBDF380E2a3B9c", decimals: 18 }
+  - pair: axs_jpy
+    asset: AXS
+    chain: ethereum
+    withdraw_fee: 1.1
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xBB0E17EF65F82Ab018d8EDd776e8DD940327B28b", decimals: 18 }
+  - pair: sand_jpy
+    asset: SAND
+    chain: ethereum
+    withdraw_fee: 12
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x3845badAde8e6dFF049820680d1F14bD3903a5d0", decimals: 18 }
+  - pair: ape_jpy
+    asset: APE
+    chain: ethereum
+    withdraw_fee: 1.5
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x4d224452801ACEd8B2F0aebE155379bb5D594381", decimals: 18 }
+  - pair: gala_jpy
+    asset: GALA
+    chain: ethereum
+    withdraw_fee: 200
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xd1d2Eb1B1e90B638588728b4130137D262C87cae", decimals: 8 }
+  - pair: chz_jpy
+    asset: CHZ
+    chain: ethereum
+    withdraw_fee: 58
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x3506424F91fD33084466F402d5D97f05F8e3b4AF", decimals: 18 }
+  - pair: mana_jpy
+    asset: MANA
+    chain: ethereum
+    withdraw_fee: 13
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x0F5D2fB29fb7d3CFeE444a200298f468908cC942", decimals: 18 }
+  - pair: grt_jpy
+    asset: GRT
+    chain: ethereum
+    withdraw_fee: 26
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xc944E90C64B2c07662A292be6244BDf05Cda44a7", decimals: 18 }
+  - pair: imx_jpy
+    asset: IMX
+    chain: ethereum
+    withdraw_fee: 5.3
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xF57e7e7C23978C3cAEC3C3548E3D615c346e79fF", decimals: 18 }
+  - pair: mask_jpy
+    asset: MASK
+    chain: ethereum
+    withdraw_fee: 2.8
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x69af81e73A73B40adF4f3d4223Cd9b1ECE623074", decimals: 18 }
+  - pair: lpt_jpy
+    asset: LPT
+    chain: ethereum
+    withdraw_fee: 1.2
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x58b6A8A3302369DAEc383334672404Ee733aB239", decimals: 18 }
+  - pair: sky_jpy
+    asset: SKY
+    chain: ethereum
+    withdraw_fee: 140
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x56072C95FAA701256059aa122697B133aDEd9279", decimals: 18 }
+    targets: [USDC]
+
+  # ---- Arbitrum ----
+  - pair: eth_jpy
+    asset: ETH
+    chain: arbitrum
+    withdraw_fee: 0.00042
+    fee_checked_at: "2026-10-07"
+    token: native
+    targets: [USDC, USDC.e]
+  - pair: arb_jpy
+    asset: ARB
+    chain: arbitrum
+    withdraw_fee: 0.64
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x912CE59144191C1204E64559FE8253a0e49E6548", decimals: 18 }
+  - pair: dai_jpy
+    asset: DAI
+    chain: arbitrum
+    withdraw_fee: 0.68
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", decimals: 18 }
+
+  # ---- OP Mainnet ----
+  - pair: eth_jpy
+    asset: ETH
+    chain: optimism
+    withdraw_fee: 0.00042
+    fee_checked_at: "2026-10-07"
+    token: native
+  - pair: op_jpy
+    asset: OP
+    chain: optimism
+    withdraw_fee: 0.32
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x4200000000000000000000000000000000000042", decimals: 18 }
+  - pair: dai_jpy
+    asset: DAI
+    chain: optimism
+    withdraw_fee: 0.68
+    fee_checked_at: "2026-10-07"
+    token: { address: "0xDA10009cBd5D07dd0CeCc66161FC93D7c9000da1", decimals: 18 }
+  - pair: cyber_jpy
+    asset: CYBER
+    chain: optimism
+    withdraw_fee: 0.11
+    fee_checked_at: "2026-10-07"
+    token: { address: "0x14778860E937f509e651192a90589dE711Fb88a9", decimals: 18 }
+
+# routes にない銘柄の出金ネットワーク（公式手数料ページより）。
+# 「未設定」一覧に、どこへ出金できるかのヒントとして表示する。
+other_networks:
+  BTC: [Bitcoin]
+  LTC: [Litecoin]
+  XRP: [XRP Ledger]
+  MONA: [Monacoin]
+  BCC: [Bitcoin Cash]
+  XLM: [Stellar]
+  QTUM: [Qtum]
+  XYM: [Symbol]
+  DOT: [Polkadot]
+  DOGE: [Dogecoin]
+  ASTR: [Astar]
+  ADA: [Cardano]
+  AVAX: [Avalanche C-Chain]
+  FLR: [Flare]
+  OAS: [Oasys]
+  RENDER: [Solana]
+  BNB: [BNB Smart Chain]
+  KLAY: [Klaytn]
+  SOL: [Solana]
+  TRX: [Tron]
+  ATOM: [Cosmos]
+  SUI: [Sui]
