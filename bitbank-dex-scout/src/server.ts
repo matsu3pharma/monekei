@@ -1,4 +1,6 @@
 // ローカルで開くダッシュボード:  npm start → http://localhost:3000
+//   npm start -- --open  で起動後にブラウザを開く（デスクトップのアイコンから起動したとき用）
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import Fastify from 'fastify';
@@ -8,6 +10,14 @@ import { scan, type ScanResult } from './scan.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '127.0.0.1';
+const OPEN = process.argv.includes('--open');
+const URL_ = `http://localhost:${PORT}`;
+
+function openBrowser(url: string) {
+  const [cmd, args] =
+    process.platform === 'darwin' ? ['open', [url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : ['xdg-open', [url]];
+  spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+}
 
 const app = Fastify({ logger: { level: 'warn' } });
 // 同じ条件の計算は30秒使い回す（複数タブで開いても外部APIを叩きすぎない）
@@ -48,6 +58,20 @@ app.get('/api/scan', async (req, reply) => {
   }
 });
 
-app.listen({ port: PORT, host: HOST }).then(() => {
-  console.log(`bitbank-dex-scout: http://localhost:${PORT} を開いてください（読み取り専用・Ctrl+C で終了）`);
-});
+app.listen({ port: PORT, host: HOST }).then(
+  () => {
+    console.log(`bitbank-dex-scout: ${URL_} を開いてください（読み取り専用・このウィンドウを閉じるか Ctrl+C で終了）`);
+    if (OPEN) openBrowser(URL_);
+  },
+  (e: NodeJS.ErrnoException) => {
+    if (e.code === 'EADDRINUSE' && OPEN) {
+      // すでに起動中なら、ブラウザで開くだけにする
+      console.log(`すでに起動しています。${URL_} を開きます。`);
+      openBrowser(URL_);
+      setTimeout(() => process.exit(0), 1000);
+      return;
+    }
+    console.error(e.code === 'EADDRINUSE' ? `ポート ${PORT} は使用中です（PORT=3001 npm start のように変更できます）` : e);
+    process.exit(1);
+  },
+);

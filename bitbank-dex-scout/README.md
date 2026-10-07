@@ -26,6 +26,30 @@ npm run scan -- --amount 100000 --json > result.json     # JSON出力（通知�
 npm test                                                 # 計算ロジックの単体テスト
 ```
 
+## デスクトップのアイコンから起動する
+
+ターミナルを使わずに、デスクトップのアイコンをダブルクリックで起動できるようにする。
+事前に Node.js（<https://nodejs.org> の LTS 版）をインストールしておくこと。
+
+**Mac**
+
+1. Finder で `bitbank-dex-scout/launcher/` を開き、`make-desktop-icon-mac.command` をダブルクリック（最初の1回だけ）
+   - 「開発元を検証できません」と出たら、右クリック →「開く」
+2. デスクトップに「bitbank DEX Scout」ができる。以後はこれをダブルクリック
+3. ターミナルの窓が開いてサーバーが起動し、ブラウザでダッシュボードが開く（初回だけ `npm install` に1〜2分かかる）
+4. 終わるときはターミナルの窓を閉じる
+
+**Windows**
+
+1. エクスプローラーで `bitbank-dex-scout\launcher\` を開き、`make-desktop-icon-windows.bat` をダブルクリック（最初の1回だけ）
+   - 「WindowsによってPCが保護されました」と出たら「詳細情報」→「実行」
+2. デスクトップに「bitbank DEX Scout」ができる。以後はこれをダブルクリック
+3. 黒い窓が開いてサーバーが起動し、ブラウザでダッシュボードが開く
+4. 終わるときは黒い窓を閉じる
+
+すでに起動中にもう一度ダブルクリックした場合は、ブラウザで開き直すだけになる。
+フォルダを移動したら、アイコン作成をもう一度やり直すこと（アイコンはフォルダの場所を覚えているため）。
+
 ## ダッシュボード
 
 - 上部：投入額（プリセット＋自由入力）、欲しいチェーンの絞り込み、テイカー／メイカー切り替え、USD/JPY と更新時刻
@@ -113,6 +137,7 @@ src/sources/tokens.ts    CoinGecko でのトークンアドレス解決（長期
 src/http.ts              ホストごとのリクエスト間隔制御・TTLキャッシュ
 src/server.ts, public/index.html   ダッシュボード
 src/cli.ts               CLI
+launcher/                デスクトップ起動用（Mac: .command / Windows: .bat）とアイコン
 test/                    単体テスト
 ```
 
