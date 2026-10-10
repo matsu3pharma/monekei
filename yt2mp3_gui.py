@@ -8,6 +8,7 @@ import subprocess
 import sys
 import threading
 import tkinter as tk
+import traceback
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
@@ -22,6 +23,7 @@ except ImportError:
 
 from yt2mp3 import download_mp3, explain_error, fetch_info, find_ffmpeg
 
+LOG_FILE = Path(__file__).resolve().parent / "yt2mp3_error.log"
 DEFAULT_DIR = Path.home() / "Music" / "yt2mp3"
 
 
@@ -146,10 +148,31 @@ class App:
         self.ok_button.state(["!disabled"])
 
 
-def main() -> None:
+def report_crash(error: BaseException) -> None:
+    """ショートカットから起動するとエラーが見えないので、画面とファイルに残す。"""
+    details = "".join(traceback.format_exception(type(error), error, error.__traceback__))
+    try:
+        LOG_FILE.write_text(details, encoding="utf-8")
+    except OSError:
+        pass
     root = tk.Tk()
-    App(root)
-    root.mainloop()
+    root.withdraw()
+    messagebox.showerror(
+        "yt2mp3",
+        f"エラーで起動できませんでした。\n\n{error}\n\n"
+        f"くわしい内容はこのファイルに保存しました:\n{LOG_FILE}",
+    )
+    root.destroy()
+
+
+def main() -> None:
+    try:
+        root = tk.Tk()
+        root.report_callback_exception = lambda *exc: report_crash(exc[1])
+        App(root)
+        root.mainloop()
+    except Exception as e:
+        report_crash(e)
 
 
 if __name__ == "__main__":
