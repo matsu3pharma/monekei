@@ -1,0 +1,75 @@
+# BNB価格比較の設定。コードを触らずに取引所の有効/無効・手数料・APIの接続先を変えられる。
+# 手数料はすべて「一般ユーザーの基本テイカー手数料」の目安。各公式ページで確認して書き換え、
+# fee_checked_at を更新すること（30日以上前だと画面に警告が出る）。
+
+server:
+  port: 3000
+  refresh_sec: 5        # ブラウザの自動更新間隔
+  cache_sec: 3          # 同じデータを再取得しない時間（レート制限対策）
+  timeout_ms: 8000      # 1リクエストのタイムアウト
+
+amounts_jpy: [10000, 100000, 1000000]   # プリセットの比較金額（板を食べたときの実効価格を出す）
+
+fx:
+  # USD/JPYの取得順。上から試して最初に成功したものを使う。
+  #   gmo   : GMOコイン外国為替FX 公開API（リアルタイムのBid/Ask、キー不要）
+  #   erapi : open.er-api.com（1日1回更新。予備）
+  providers: [gmo, erapi]
+
+venues:
+  - id: bitbank
+    enabled: true
+    taker_fee: 0.0012          # 要確認
+    fee_checked_at: "2026-10-30"
+    base_url: https://public.bitbank.cc
+    pair: bnb_jpy
+
+  - id: binance_japan
+    enabled: true
+    taker_fee: 0.001           # 要確認
+    fee_checked_at: "2026-10-30"
+    # バイナンスジャパンのJPYペアは api.binance.com で配信される（日本以外のIPからは451で拒否される）
+    base_url: https://api.binance.com
+    symbol: BNBJPY
+
+  - id: hyperliquid
+    enabled: true
+    taker_fee: 0.00045         # 要確認
+    fee_checked_at: "2026-10-30"
+    base_url: https://api.hyperliquid.xyz
+    coin: BNB
+
+  - id: aster
+    enabled: true
+    taker_fee: 0.00035         # 要確認
+    fee_checked_at: "2026-10-30"
+    base_url: https://fapi.asterdex.com
+    symbol: BNBUSDT
+
+  - id: lighter
+    enabled: true
+    taker_fee: 0               # 要確認（Standardアカウントは0）
+    fee_checked_at: "2026-10-30"
+    base_url: https://mainnet.zklighter.elliot.ai
+    symbol: BNB
+
+  - id: dydx
+    enabled: true
+    taker_fee: 0.0005          # 要確認
+    fee_checked_at: "2026-10-30"
+    base_url: https://indexer.dydx.trade
+    ticker: BNB-USD
+
+  - id: paradex
+    enabled: true
+    taker_fee: 0               # 要確認（リテールは0）
+    fee_checked_at: "2026-10-30"
+    base_url: https://api.prod.paradex.trade
+    market: BNB-USD-PERP
+
+  - id: extended
+    enabled: true
+    taker_fee: 0.00025         # 要確認
+    fee_checked_at: "2026-10-30"
+    base_url: https://api.starknet.extended.exchange
+    market: BNB-USD

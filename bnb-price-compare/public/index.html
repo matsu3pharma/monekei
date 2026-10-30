@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BNB価格比較</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1b1b1f; --muted: #6b6b76; --line: #e3e3e0;
+    --accent: #c98a00; --up: #0a8a5a; --down: #c2364b; --chip: #efefeb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141417; --panel: #1d1d22; --text: #ececf0; --muted: #9a9aa6; --line: #2e2e35;
+      --accent: #f0b90b; --up: #3ecf8e; --down: #ff6b81; --chip: #2a2a31;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 14px/1.5 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif; }
+  main { max-width: 1180px; margin: 0 auto; padding: 20px 16px 40px; }
+  h1 { font-size: 20px; margin: 0; }
+  .num { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: baseline; justify-content: space-between; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0; }
+  button, input { font: inherit; color: inherit; }
+  .chip { border: 1px solid var(--line); background: var(--chip); border-radius: 999px; padding: 4px 12px; cursor: pointer; }
+  .chip[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+  input[type=number] { width: 130px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-bottom: 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .label { font-size: 12px; color: var(--muted); }
+  .card .value { font-size: 22px; font-weight: 600; }
+  .card .sub { font-size: 12px; color: var(--muted); }
+  .tablewrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; min-width: 960px; }
+  th, td { padding: 8px 8px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+  th { font-size: 12px; color: var(--muted); font-weight: 500; position: sticky; top: 0; background: var(--panel); }
+  th:first-child, td:first-child, th:last-child { text-align: left; }
+  tr:last-child td { border-bottom: 0; }
+  tr.group td { background: var(--chip); font-size: 12px; color: var(--muted); text-align: left; padding: 4px 10px; }
+  .tag { font-size: 11px; color: var(--muted); margin-left: 6px; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .best { font-weight: 700; color: var(--accent); }
+  .bar { position: relative; width: 72px; height: 8px; background: var(--chip); border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 8px; }
+  .bar::before { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--muted); }
+  .bar span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .warn { color: var(--down); font-size: 12px; text-align: left; white-space: normal; min-width: 110px; }
+  .err td { color: var(--muted); }
+  footer { margin-top: 14px; font-size: 12px; color: var(--muted); }
+  #status.stale { color: var(--down); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>BNB 価格比較 <span class="muted" style="font-size:13px;font-weight:400">国内CEX × Perp DEX</span></h1>
+    <div class="muted"><span id="status">読み込み中…</span>
+      <button class="chip" id="refresh" type="button">更新</button></div>
+  </header>
+
+  <div class="controls" id="amounts">
+    <span class="muted">比較金額</span>
+    <input type="number" id="amountInput" min="1000" step="1000" aria-label="比較金額（円）">
+    <span class="muted">円</span>
+  </div>
+
+  <section class="cards" id="cards"></section>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>取引所</th><th>Bid / Ask（現地通貨）</th><th>仲値（円）</th><th>仲値（USD）</th>
+          <th>基準からの乖離</th><th>スプレッド</th>
+          <th>買い実効<br>手数料込</th><th>売り実効<br>手数料込</th><th>FR（8h換算）</th><th>注意</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    基準価格＝取得できたPerp DEXの仲値（USD）の中央値。円換算はリアルタイムのUSD/JPY仲値を使用し、USDT・USDCは1ドルとみなしています。
+    「買い実効／売り実効」は比較金額ぶん板を成行で食べたときの平均価格に、config/venues.yaml のテイカー手数料を加味した試算です（送金・入出金・為替コストは含みません）。
+    表示は目安であり、売買や出金は一切行いません。
+  </footer>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const yen = (n) => n == null ? '–' : '¥' + Math.round(n).toLocaleString('ja-JP');
+const usd = (n) => n == null ? '–' : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const abspct = (n, d = 3) => n == null ? '–' : (n * 100).toFixed(d) + '%';
+const pct = (n, d = 2) => n == null ? '–' : (n >= 0 ? '+' : '') + (n * 100).toFixed(d) + '%';
+const sign = (n) => n == null ? '' : n > 0 ? 'up' : n < 0 ? 'down' : '';
+const native = (n, q) => n == null ? '–' : q === 'JPY' ? Math.round(n).toLocaleString('ja-JP') : n.toFixed(2);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+let amount = 100000, refreshSec = 5, timer, lastOk = 0;
+
+async function init() {
+  try {
+    const c = await (await fetch('/api/config')).json();
+    refreshSec = c.refresh_sec;
+    amount = c.amounts_jpy.includes(100000) ? 100000 : (c.amounts_jpy[0] ?? amount);
+    try { amount = Number(localStorage.getItem('bnb.amount')) || amount; } catch {}
+    const box = $('amounts');
+    for (const a of c.amounts_jpy) {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button'; b.dataset.amount = a;
+      b.textContent = a >= 10000 ? (a / 10000).toLocaleString('ja-JP') + '万円' : a.toLocaleString('ja-JP') + '円';
+      b.onclick = () => setAmount(a);
+      box.insertBefore(b, $('amountInput'));
+    }
+  } catch {}
+  $('amountInput').onchange = (e) => { const v = Number(e.target.value); if (v > 0) setAmount(v); };
+  $('refresh').onclick = load;
+  setAmount(amount);
+}
+
+function setAmount(a) {
+  amount = a;
+  $('amountInput').value = a;
+  try { localStorage.setItem('bnb.amount', a); } catch {}
+  document.querySelectorAll('[data-amount]').forEach((b) => b.setAttribute('aria-pressed', Number(b.dataset.amount) === a));
+  load();
+}
+
+async function load() {
+  clearTimeout(timer);
+  try {
+    const res = await fetch('/api/compare?amount=' + amount);
+    const d = await res.json();
+    if (!res.ok) throw new Error(d.error);
+    render(d);
+    lastOk = Date.now();
+    $('status').className = '';
+    $('status').textContent = '更新 ' + new Date(d.ts).toLocaleTimeString('ja-JP') + `（${refreshSec}秒ごと）`;
+  } catch (e) {
+    $('status').className = 'stale';
+    $('status').textContent = '取得失敗: ' + e.message + (lastOk ? '（前回 ' + new Date(lastOk).toLocaleTimeString('ja-JP') + '）' : '');
+  }
+  timer = setTimeout(load, refreshSec * 1000);
+}
+
+function render(d) {
+  const fx = d.fx;
+  const cex = d.rows.filter((r) => r.kind === 'cex');
+  const cards = [
+    { label: 'USD/JPY', value: fx.mid.toFixed(3),
+      sub: (fx.bid ? `Bid ${fx.bid.toFixed(3)} / Ask ${fx.ask.toFixed(3)}・` : '') + esc(fx.source) +
+        (fx.marketClosed ? '・市場クローズ中' : '') + (fx.realtime ? '' : '・リアルタイムではありません') },
+    { label: '基準価格（Perp DEX中央値）', value: usd(d.refUsd), sub: yen(d.refJpy) },
+    ...cex.map((r) => ({
+      label: r.name + ' の国内プレミアム',
+      value: r.ok ? `<span class="${sign(r.deviationPct)}">${pct(r.deviationPct)}</span>` : '–',
+      sub: r.ok ? `仲値 ${yen(r.midJpy)}（${usd(r.midUsd)}）` : '取得失敗: ' + esc(r.error),
+    })),
+    { label: `最安買い → 最高売り（${yen(d.amountJpy)}）`,
+      value: d.gapPct == null ? '–' : `<span class="${sign(d.gapPct)}">${pct(d.gapPct)}</span>`,
+      sub: d.bestBuy && d.bestSell ? `${esc(d.bestBuy.name)} ${yen(d.bestBuy.priceJpy)} → ${esc(d.bestSell.name)} ${yen(d.bestSell.priceJpy)}` : '' },
+  ];
+  $('cards').innerHTML = cards.map((c) =>
+    `<div class="card"><div class="label">${c.label}</div><div class="value num">${c.value}</div><div class="sub num">${c.sub}</div></div>`).join('');
+
+  const maxDev = Math.max(0.005, ...d.rows.filter((r) => r.ok).map((r) => Math.abs(r.deviationPct ?? 0)));
+  const bar = (v) => {
+    if (v == null) return '';
+    const w = Math.min(50, (Math.abs(v) / maxDev) * 50);
+    const style = v >= 0 ? `left:50%;width:${w}%;background:var(--up)` : `right:50%;width:${w}%;background:var(--down)`;
+    return `<span class="bar"><span style="${style}"></span></span>`;
+  };
+  const row = (r) => {
+    if (!r.ok) return `<tr class="err"><td>${esc(r.name)}<span class="tag">${r.quote}</span></td><td colspan="8" style="text-align:left">取得失敗: ${esc(r.error)}</td><td class="warn">${r.warnings.map(esc).join('<br>')}</td></tr>`;
+    const isBuy = d.bestBuy?.id === r.id, isSell = d.bestSell?.id === r.id;
+    return `<tr>
+      <td>${esc(r.name)}<span class="tag">${r.quote}</span></td>
+      <td class="num">${native(r.bid, r.quote)} / ${native(r.ask, r.quote)}</td>
+      <td class="num">${yen(r.midJpy)}</td>
+      <td class="num">${usd(r.midUsd)}</td>
+      <td class="num"><span class="${sign(r.deviationPct)}">${pct(r.deviationPct)}</span>${bar(r.deviationPct)}</td>
+      <td class="num">${abspct(r.spreadPct)}</td>
+      <td class="num ${isBuy ? 'best' : ''}">${yen(r.buyJpyNet)}${isBuy ? ' ★' : ''}</td>
+      <td class="num ${isSell ? 'best' : ''}">${yen(r.sellJpyNet)}${isSell ? ' ★' : ''}</td>
+      <td class="num ${sign(r.funding8h)}">${pct(r.funding8h, 4)}</td>
+      <td class="warn">${r.warnings.map(esc).join('<br>')}</td>
+    </tr>`;
+  };
+  const group = (label, rows) => rows.length ? `<tr class="group"><td colspan="10">${label}</td></tr>` + rows.map(row).join('') : '';
+  $('rows').innerHTML = group('国内取引所（現物・JPY建て）', cex) + group('Perp DEX（無期限先物・USD建て）', d.rows.filter((r) => r.kind === 'perp'));
+}
+
+init();
+</script>
+</body>
+</html>

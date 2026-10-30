@@ -1,0 +1,24 @@
+{
+  "name": "bnb-price-compare",
+  "version": "0.1.0",
+  "private": true,
+  "description": "bitbank・バイナンスジャパンのBNB/JPYと主要Perp DEXのBNB価格をリアルタイムUSD/JPYで比較する読み取り専用ツール",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "scan": "tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "tsx": "^4.19.2",
+    "yaml": "^2.6.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}
