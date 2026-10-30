@@ -10,19 +10,32 @@ APIキー・秘密鍵は不要で、注文・出金などは一切行いませ�
 | Perp DEX（USD/USDC/USDT） | Hyperliquid, Aster, Lighter, dYdX, Paradex, Extended | 板・マーク価格・資金調達率 |
 | 為替 | GMOコイン 外国為替FX 公開API（リアルタイムBid/Ask） | 失敗時は open.er-api.com（日次）に切替 |
 
-## 使い方
+## 使い方（ダブルクリックで起動）
 
-Node.js 20以上が必要です。
+### 最初に1回だけ
+
+1. **Node.js をインストール**：https://nodejs.org/ja/download から「LTS」版を入れる（入っていなければ起動時にこのページが開きます）。
+2. このフォルダ（`bnb-price-compare`）を好きな場所に置く（GitHubの「Code → Download ZIP」で落として解凍してもOK）。
+3. **デスクトップにアイコンを作る**
+   - Windows：`create-desktop-icon-windows.bat` をダブルクリック
+   - Mac：`create-desktop-icon-mac.command` をダブルクリック
+     （「開発元が未確認」と出たら、右クリック →「開く」→「開く」）
+
+### 毎回
+
+デスクトップの **「BNB価格比較」** をダブルクリック → 黒いウィンドウが開き、ブラウザで画面が表示されます。
+
+- 初回だけ部品のダウンロードに1〜2分かかります。
+- **終了するときは黒いウィンドウを閉じる**だけです。
+- 起動中にもう一度ダブルクリックすると、ブラウザの画面だけ開き直します。
+- アイコンを作らずに、フォルダ内の `start-windows.bat`（Windows）／`start-mac.command`（Mac）を直接ダブルクリックしても起動できます。
+- フォルダを移動したときは、もう一度「デスクトップにアイコンを作る」を実行してください。
+
+### ターミナルから使う場合
 
 ```bash
-cd bnb-price-compare
 npm install
-npm start          # → http://localhost:3000 をブラウザで開く（5秒ごとに自動更新）
-```
-
-ターミナルで見るだけなら:
-
-```bash
+npm start          # → http://localhost:3000
 npm run scan -- --amount 100000          # 表で表示
 npm run scan -- --amount 100000 --json   # JSONで出力
 ```
@@ -68,6 +81,8 @@ src/
 └── cli.ts              # npm run scan
 public/index.html       # 画面
 config/venues.yaml      # 設定
+start-windows.bat / start-mac.command    # ダブルクリック起動
+create-desktop-icon-*.bat / .command     # デスクトップにアイコンを作る
 ```
 
 取引所を足すときは `src/sources/venues.ts` に `Venue`（`fetch()` で板などを返す）を1つ書いて `VENUES` に加え、
