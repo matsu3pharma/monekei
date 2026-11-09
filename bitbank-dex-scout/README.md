@@ -68,7 +68,7 @@ npm test                                                 # 計算ロジックの
    メイカー想定では最良買値で全量約定したと仮定する（楽観的な見積り）
 2. 取引手数料は bitbank `/spot/pairs` の `taker_fee_rate_quote` / `maker_fee_rate_quote`（取れなければ routes.yaml の値）
 3. Q' = Q − 出金手数料 W
-4. KyberSwap Aggregator で「Q' 数量のトークン → USDC」を実数量で見積もり、R0 を得る
+4. DEXアグリゲーター（KyberSwap または ParaSwap。空いている方を使い、失敗したらもう一方で取り直す）で「Q' 数量のトークン → USDC」を実数量で見積もり、R0 を得る
 5. ガス代（アグリゲーターの gasUsd。ERC-20 なら approve 分も加算。取れなければ公開RPCの gasPrice から自前計算）を USDC に換算して引き、R を得る
 6. 損失額 = X − R × USDJPY、損失率 = 損失額 ÷ X
 
@@ -110,7 +110,7 @@ bitbank の出金手数料・対応ネットワーク・出金停止状態は、
 6. メンテナンス等で出金が止まっているときは、そのルートに `disabled: true` と `disabled_reason: "出金停止中"` を書く
 7. `npm run scan -- --detail` で、内訳の出金手数料が変わったことを確認する
 
-現在の値は 2026-10-07 に公式ページから写したもの。
+現在の値は 2026-11-09 に公式ページで確認したもの。
 
 ## 対象範囲
 
@@ -131,7 +131,7 @@ src/calc/route.ts        損失計算（純粋関数。simulateBuy / computeLoss
 src/scan.ts              データ取得と計算のまとめ役。1つのAPIが落ちてもその行だけ「見積り失敗」
 src/sources/bitbank.ts   ペア一覧・板（板は5秒キャッシュ）
 src/sources/fx.ts        USD/JPY（frankfurter / open-er-api / manual。第一候補が落ちたら予備を使う）
-src/sources/dex/         DEXアダプター。getQuote(chain, tokenIn, amountIn, tokenOut) の共通インターフェース
+src/sources/dex/         DEXアダプター（KyberSwap, ParaSwap）。getQuote(chain, tokenIn, amountIn, tokenOut) の共通インターフェースで、空いている提供元に振り分ける
 src/sources/gas.ts       予備のガス価格（公開RPC）
 src/sources/tokens.ts    CoinGecko でのトークンアドレス解決（長期キャッシュ）
 src/http.ts              ホストごとのリクエスト間隔制御・TTLキャッシュ
@@ -141,8 +141,8 @@ launcher/                デスクトップ起動用（Mac: .command / Windows: 
 test/                    単体テスト
 ```
 
-レート制限対策として、ホストごとに最小リクエスト間隔（bitbank 150ms、KyberSwap 120ms、CoinGecko 3秒）を空け、
-板5秒・DEX見積り20秒・為替10分・ペア一覧5分・トークンアドレスは無期限でキャッシュしている。
+レート制限対策として、ホストごとに最小リクエスト間隔（bitbank 150ms、KyberSwap 1.1秒、ParaSwap 0.3秒、CoinGecko 3秒）を空け、
+回数制限（429）やサーバーエラーを受けたら少し待って再試行する。キャッシュは板5秒・DEX見積り90秒・為替10分・ペア一覧5分・トークンアドレスは無期限でキャッシュしている。
 
 ## 今後の拡張（未実装）
 

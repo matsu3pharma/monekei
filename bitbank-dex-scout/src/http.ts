@@ -1,12 +1,23 @@
 // 通信の共通部品：ホストごとのリクエスト間隔制御（レート制限対策）と TTL キャッシュ
-const lastCall = new Map<string, Promise<void>>();
+const nextFree = new Map<string, number>();
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** 同じホストへのリクエストを minIntervalMs ずつ空けて順番に送る */
-export function throttle(host: string, minIntervalMs: number): Promise<void> {
-  const prev = lastCall.get(host) ?? Promise.resolve();
-  const next = prev.then(() => new Promise<void>((r) => setTimeout(r, minIntervalMs)));
-  lastCall.set(host, next);
-  return prev;
+export async function throttle(host: string, minIntervalMs: number): Promise<void> {
+  const now = Date.now();
+  const at = Math.max(now, nextFree.get(host) ?? 0);
+  nextFree.set(host, at + minIntervalMs);
+  if (at > now) await sleep(at - now);
+}
+
+/** そのホストに次のリクエストを送れるまでの待ち時間（ms）。混んでいない提供元を選ぶのに使う */
+export function waitTime(host: string): number {
+  return Math.max(0, (nextFree.get(host) ?? 0) - Date.now());
+}
+
+/** 429（回数制限）を受けたら、そのホストへの送信をしばらく止める */
+function backoff(host: string, ms: number) {
+  nextFree.set(host, Math.max(nextFree.get(host) ?? 0, Date.now() + ms));
 }
 
 export interface FetchOptions {
@@ -15,23 +26,39 @@ export interface FetchOptions {
   headers?: Record<string, string>;
   method?: string;
   body?: string;
+  /** 429・5xx のときに再試行する回数（既定 2） */
+  retries?: number;
 }
 
 export async function fetchJson<T = any>(url: string, opts: FetchOptions = {}): Promise<T> {
   const host = new URL(url).host;
-  await throttle(host, opts.minIntervalMs ?? 200);
-  const res = await fetch(url, {
-    method: opts.method ?? 'GET',
-    headers: { accept: 'application/json', ...(opts.headers ?? {}) },
-    body: opts.body,
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 15000),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${host}: ${text.slice(0, 200)}`);
-  try {
-    return JSON.parse(text) as T;
-  } catch {
-    throw new Error(`JSONではない応答 ${host}: ${text.slice(0, 120)}`);
+  const retries = opts.retries ?? 2;
+  for (let attempt = 0; ; attempt++) {
+    await throttle(host, opts.minIntervalMs ?? 200);
+    const res = await fetch(url, {
+      method: opts.method ?? 'GET',
+      headers: { accept: 'application/json', ...(opts.headers ?? {}) },
+      body: opts.body,
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 15000),
+    });
+    const text = await res.text();
+    if (res.ok) {
+      try {
+        return JSON.parse(text) as T;
+      } catch {
+        throw new Error(`JSONではない応答 ${host}: ${text.slice(0, 120)}`);
+      }
+    }
+    const retryable = res.status === 429 || res.status >= 500;
+    if (retryable && attempt < retries) {
+      const ra = Number(res.headers.get('retry-after'));
+      const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : 2000 * (attempt + 1);
+      if (res.status === 429) backoff(host, wait);
+      else await sleep(wait);
+      continue;
+    }
+    const brief = res.status === 429 ? 'リクエスト回数の制限に達しました' : text.replace(/\s+/g, ' ').slice(0, 120);
+    throw new Error(`HTTP ${res.status} ${host}: ${brief}`);
   }
 }
 

@@ -33,7 +33,8 @@ describe('scan（APIの一部が落ちたとき）', () => {
       if (url.includes('/spot/status')) return json({ success: 1, data: { statuses: [] } });
       if (url.includes('pol_jpy/depth')) return depth('20', '19.9');
       if (url.includes('eth_jpy/depth')) return depth('400000', '399900');
-      if (url.includes('/arbitrum/')) return new Response('down', { status: 503 });
+      if (url.includes('/arbitrum/') || url.includes('network=42161')) return new Response('down', { status: 503 });
+      if (url.includes('paraswap')) return new Response('down', { status: 503 }); // ParaSwap も落ちている想定（KyberSwap だけで計算）
       if (url.includes('/polygon/')) {
         const amountIn = Number(new URL(url).searchParams.get('amountIn')) / 1e18;
         return json({
@@ -57,5 +58,5 @@ describe('scan（APIの一部が落ちたとき）', () => {
     expect(eth.error).toMatch(/見積り失敗/);
     expect(eth.warnings.join()).toMatch(/手数料の確認が古い/);
     expect(r.rows[0].pair).toBe('pol_jpy'); // 成功した行が上
-  });
+  }, 30_000); // 503 は数秒おいて再試行するので長めに
 });

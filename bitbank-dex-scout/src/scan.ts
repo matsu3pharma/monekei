@@ -222,10 +222,11 @@ export async function scan(opts: ScanOptions = {}): Promise<ScanResult> {
           let gasUsdc = new Decimal(0);
           if (Qn.gt(0) && token) {
             const usdcToken: Token = { symbol: target, address: usdc.address, decimals: usdc.decimals };
-            const [q, small] = await Promise.all([
-              getQuote(chain, token, Qn, usdcToken),
-              refPrice(`${route.pair}:${chain.id}:${target}`, new Decimal(REF_JPY).div(buy.mid).toSignificantDigits(2), (a) => getQuote(chain, token!, a, usdcToken)),
-            ]);
+            const q = await getQuote(chain, token, Qn, usdcToken);
+            // 基準単価は本見積りと同じ提供元で取る（提供元ごとの価格差を「DEXコスト」に混ぜないため）
+            const small = await refPrice(`${route.pair}:${chain.id}:${target}:${q.source}`, new Decimal(REF_JPY).div(buy.mid).toSignificantDigits(2), (a) =>
+              getQuote(chain, token!, a, usdcToken, { prefer: q.source }),
+            );
             const usdcUsd = q.tokenOutUsd ?? new Decimal(1);
             gasUsdc = (await gasUsdFor(chain, token, q, nativeUsd(chain))).div(usdcUsd);
             // DEXの基準単価：少額（約 REF_JPY 円分）で見積もった単価。取れなければアグリゲーターの参照価格
